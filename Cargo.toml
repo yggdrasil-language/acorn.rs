@@ -8,6 +8,18 @@ exclude = [
     "projects/.DS_Store",
 ]
 
+[workspace.package]
+version = "0.0.1"
+authors = ["Yggdrasill Team <192607617@qq.com>"]
+edition = "2021"
+license = "MPL-2.0"
+homepage = "https://github.com/oovm/acorn.rs"
+repository = "https://github.com/oovm/acorn.rs"
+
+[workspace.dependencies]
+thiserror = "2.0.18"
+serde = { version = "1.0.228", features = ["derive"] }
+
 [profile.release]
 lto = true
 panic = "abort"
