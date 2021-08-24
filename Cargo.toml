@@ -2,6 +2,7 @@
 resolver = "2"
 members = ["projects/*"]
 default-members = [
+    "projects/acorn-core",
     "projects/acorn-diagnostic",
     "projects/syntax-error",
 ]
@@ -22,6 +23,7 @@ thiserror = "2.0.18"
 serde = { version = "1.0.228", features = ["derive"] }
 
 acorn-diagnostic = { path = "projects/acorn-diagnostic", version = "0.0.1" }
+acorn-core = { path = "projects/acorn-core", version = "0.0.1" }
 
 [profile.release]
 lto = true
