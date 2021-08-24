@@ -4,6 +4,7 @@ members = ["projects/*"]
 default-members = [
     "projects/acorn-core",
     "projects/acorn-diagnostic",
+    "projects/acorn-source",
     "projects/syntax-error",
 ]
 exclude = [
@@ -24,6 +25,7 @@ serde = { version = "1.0.228", features = ["derive"] }
 
 acorn-diagnostic = { path = "projects/acorn-diagnostic", version = "0.0.1" }
 acorn-core = { path = "projects/acorn-core", version = "0.0.1" }
+acorn-source = { path = "projects/acorn-source", version = "0.0.1" }
 
 [profile.release]
 lto = true
