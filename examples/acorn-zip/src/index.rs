@@ -6,6 +6,7 @@ use acorn_source::{ByteSource, MemorySource, ReadOutcome};
 
 use crate::eocd::{find_eocd, read_u16_le, read_u32_le, EndOfCentralDirectory};
 use crate::entry::ZipMember;
+use crate::zip64::{needs_zip64_size, parse_zip64_extra};
 
 const CD_SIGNATURE: u32 = 0x0201_4b50;
 const LOCAL_SIGNATURE: u32 = 0x0403_4b50;
@@ -122,7 +123,9 @@ fn parse_central_directory(
     space: AddressSpaceId,
 ) -> Result<Vec<ZipMember>, ZipIndexError> {
     let mut offset = eocd.central_directory_offset as usize;
-    let end = offset + eocd.central_directory_size as usize;
+    let end = offset
+        .checked_add(eocd.central_directory_size as usize)
+        .ok_or(ZipIndexError::CentralDirectoryOutOfBounds)?;
     if end > bytes.len() {
         return Err(ZipIndexError::CentralDirectoryOutOfBounds);
     }
@@ -135,12 +138,16 @@ fn parse_central_directory(
             });
         }
         let compression_method = read_u16_le(bytes, offset + 10).unwrap_or(0);
-        let compressed_size = read_u32_le(bytes, offset + 20).unwrap_or(0);
-        let uncompressed_size = read_u32_le(bytes, offset + 24).unwrap_or(0);
+        let compressed32 = read_u32_le(bytes, offset + 20).unwrap_or(0);
+        let uncompressed32 = read_u32_le(bytes, offset + 24).unwrap_or(0);
         let name_length = read_u16_le(bytes, offset + 28).unwrap_or(0) as usize;
         let extra_length = read_u16_le(bytes, offset + 30).unwrap_or(0) as usize;
         let comment_length = read_u16_le(bytes, offset + 32).unwrap_or(0) as usize;
-        let local_header_offset = read_u32_le(bytes, offset + 42).unwrap_or(0);
+        let local_offset32 = read_u32_le(bytes, offset + 42).unwrap_or(0);
+
+        let needs_uncompressed = needs_zip64_size(uncompressed32);
+        let needs_compressed = needs_zip64_size(compressed32);
+        let needs_local_offset = needs_zip64_size(local_offset32);
 
         let name_start = offset + CD_ENTRY_PREFIX;
         let name_end = name_start + name_length;
@@ -151,8 +158,29 @@ fn parse_central_directory(
         }
         let path = String::from_utf8_lossy(&bytes[name_start..name_end]).into_owned();
 
+        let extra_start = name_end;
+        let zip64 = if needs_uncompressed || needs_compressed || needs_local_offset {
+            parse_zip64_extra(
+                bytes,
+                extra_start,
+                extra_length,
+                needs_uncompressed,
+                needs_compressed,
+                needs_local_offset,
+            )
+            .ok_or(ZipIndexError::MalformedEntry {
+                offset: offset as u64,
+            })?
+        } else {
+            crate::zip64::Zip64Fields {
+                uncompressed_size: uncompressed32 as u64,
+                compressed_size: compressed32 as u64,
+                local_header_offset: local_offset32 as u64,
+            }
+        };
+
         let entry_len = CD_ENTRY_PREFIX + name_length + extra_length + comment_length;
-        let entry_range = ByteRange::new(offset as u64, entry_len as u64).map_err(|error| {
+        let entry_range = ByteRange::new(offset as u64, entry_len as u64).map_err(|_| {
             ZipIndexError::MalformedEntry {
                 offset: offset as u64,
             }
@@ -162,8 +190,11 @@ fn parse_central_directory(
             .insert_node(NodeState::Indexed, entry_range, format!("ZIP member {}", path))
             .map_err(|error| ZipIndexError::Layout(error.to_string()))?;
 
-        let data_range =
-            member_payload_range(bytes, local_header_offset, compressed_size)?;
+        let (data_range, payload_range) = member_payload_range(
+            bytes,
+            zip64.local_header_offset,
+            zip64.compressed_size,
+        )?;
 
         layout.add_edge(ReferenceEdge {
             from: member_node,
@@ -173,11 +204,12 @@ fn parse_central_directory(
 
         members.push(ZipMember {
             path,
-            local_header_offset,
-            compressed_size,
-            uncompressed_size,
+            local_header_offset: zip64.local_header_offset,
+            compressed_size: zip64.compressed_size,
+            uncompressed_size: zip64.uncompressed_size,
             compression_method,
             data_range,
+            payload_range,
         });
 
         offset += entry_len;
@@ -187,31 +219,45 @@ fn parse_central_directory(
 
 fn member_payload_range(
     bytes: &[u8],
-    local_header_offset: u32,
-    compressed_size: u32,
-) -> Result<ByteRange, ZipIndexError> {
+    local_header_offset: u64,
+    compressed_size: u64,
+) -> Result<(ByteRange, ByteRange), ZipIndexError> {
     let offset = local_header_offset as usize;
     if read_u32_le(bytes, offset) != Some(LOCAL_SIGNATURE) {
         return Err(ZipIndexError::MalformedEntry {
-            offset: local_header_offset as u64,
+            offset: local_header_offset,
         });
     }
     let name_length = read_u16_le(bytes, offset + 26).unwrap_or(0) as usize;
     let extra_length = read_u16_le(bytes, offset + 28).unwrap_or(0) as usize;
     let header_len = 30 + name_length + extra_length;
-    let payload_start = offset + header_len;
-    let payload_end = payload_start + compressed_size as usize;
+    let payload_start = offset
+        .checked_add(header_len)
+        .ok_or(ZipIndexError::MalformedEntry {
+            offset: local_header_offset,
+        })?;
+    let payload_end = payload_start
+        .checked_add(compressed_size as usize)
+        .ok_or(ZipIndexError::MalformedEntry {
+            offset: local_header_offset,
+        })?;
     if payload_end > bytes.len() {
         return Err(ZipIndexError::MalformedEntry {
-            offset: local_header_offset as u64,
+            offset: local_header_offset,
         });
     }
-    let total_len = header_len + compressed_size as usize;
-    ByteRange::new(local_header_offset as u64, total_len as u64).map_err(|_| {
+    let total_len = header_len as u64 + compressed_size;
+    let data_range = ByteRange::new(local_header_offset, total_len).map_err(|_| {
         ZipIndexError::MalformedEntry {
-            offset: local_header_offset as u64,
+            offset: local_header_offset,
         }
-    })
+    })?;
+    let payload_range = ByteRange::new(payload_start as u64, compressed_size).map_err(|_| {
+        ZipIndexError::MalformedEntry {
+            offset: local_header_offset,
+        }
+    })?;
+    Ok((data_range, payload_range))
 }
 
 /// Indexes in-memory archive bytes.
