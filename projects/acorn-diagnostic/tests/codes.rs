@@ -1,24 +1,40 @@
-use acorn_diagnostic::{Diagnostic, DiagnosticCode, RecoveryAction, Severity};
+use acorn_diagnostic::{
+    actions, error, warning, BudgetUsage, DiagnosticCode, DiagnosticSeverity, DiagnosticSet,
+};
 
 #[test]
-fn diagnostic_codes_are_stable_strings() {
-    assert_eq!(
-        DiagnosticCode::NeedRange.as_str(),
-        "ACORN_NEED_RANGE"
-    );
+fn diagnostic_codes_use_dotted_wire_identifiers() {
+    assert_eq!(DiagnosticCode::NeedRange.as_str(), "acorn.layout.need-range");
     assert_eq!(
         DiagnosticCode::OffsetOverflow.as_str(),
-        "ACORN_OFFSET_OVERFLOW"
+        "acorn.layout.offset-overflow"
+    );
+    assert_eq!(
+        DiagnosticCode::MagicMismatch.as_str(),
+        "acorn.probe.magic-mismatch"
     );
 }
 
 #[test]
-fn diagnostic_builder_attaches_params_and_recovery() {
-    let diagnostic = Diagnostic::error(DiagnosticCode::Truncated, "input ended early")
-        .with_param("expected", "64")
-        .with_recovery(RecoveryAction::ProvideRanges);
+fn builders_emit_unified_diagnostic_records() {
+    let diagnostic = error(DiagnosticCode::Truncated, "input ended early")
+        .with_action(actions::provide_ranges().with_arg("expected", acorn_diagnostic::MessageArg::U64(64)));
 
-    assert_eq!(diagnostic.severity, Severity::Error);
-    assert_eq!(diagnostic.params.get("expected"), Some(&"64".to_string()));
-    assert_eq!(diagnostic.recovery, vec![RecoveryAction::ProvideRanges]);
+    assert_eq!(diagnostic.code().as_str(), "acorn.layout.truncated");
+    assert_eq!(diagnostic.severity(), DiagnosticSeverity::Error);
+    assert_eq!(diagnostic.origin().namespace(), "acorn");
+    assert_eq!(diagnostic.message().fallback(), Some("input ended early"));
+    assert_eq!(diagnostic.actions().len(), 1);
+}
+
+#[test]
+fn diagnostic_set_collects_acorn_records() {
+    let mut set = DiagnosticSet::new();
+    set.push(warning(DiagnosticCode::NeedRange, "need tail bytes"));
+    assert_eq!(set.diagnostics().len(), 1);
+}
+
+#[test]
+fn budget_usage_defaults_to_zero() {
+    assert_eq!(BudgetUsage::default().read_bytes, 0);
 }
