@@ -7,6 +7,7 @@ default-members = [
     "projects/acorn-source",
     "projects/acorn-probe",
     "examples/acorn-zip",
+    "examples/acorn-docx",
 ]
 exclude = [
     "projects/.DS_Store",
@@ -24,11 +25,14 @@ repository = "https://github.com/yggdrasil-language/acorn.rs"
 [workspace.dependencies]
 thiserror = "2.0.18"
 serde = { version = "1.0.228", features = ["derive"] }
+flate2 = { version = "1.1.5", default-features = false, features = ["rust_backend"] }
 
 acorn-diagnostic = { path = "projects/acorn-diagnostic" }
 acorn-core = { path = "projects/acorn-core" }
 acorn-source = { path = "projects/acorn-source" }
 acorn-probe = { path = "projects/acorn-probe" }
+acorn-zip = { path = "examples/acorn-zip" }
+acorn-docx = { path = "examples/acorn-docx" }
 
 [profile.release]
 lto = true
