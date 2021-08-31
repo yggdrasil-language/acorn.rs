@@ -17,6 +17,7 @@ pub struct ManifestItem {
     pub id: String,
     pub href: String,
     pub media_type: String,
+    pub properties: Option<String>,
 }
 
 /// One spine `itemref` in reading order.
@@ -148,10 +149,12 @@ fn parse_manifest_item(tag: &quick_xml::events::BytesStart) -> Option<ManifestIt
     let id = attribute_value(tag, b"id")?;
     let href = attribute_value(tag, b"href")?;
     let media_type = attribute_value(tag, b"media-type").unwrap_or_default();
+    let properties = attribute_value(tag, b"properties");
     Some(ManifestItem {
         id,
         href,
         media_type,
+        properties,
     })
 }
 
