@@ -1,5 +1,6 @@
-use quick_xml::events::Event;
-use quick_xml::Reader;
+use crate::xml::{
+    attribute_value, document_root, elements_by_local_name, parse_xml_bytes,
+};
 
 /// One `rootfile` entry from `META-INF/container.xml`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -10,49 +11,19 @@ pub struct ContainerRootFile {
 
 /// Parses EPUB container XML and returns discovered rootfiles.
 pub fn parse_container_xml(xml: &[u8]) -> Result<Vec<ContainerRootFile>, String> {
-    let mut reader = Reader::from_reader(xml);
-    reader.config_mut().trim_text(true);
-
-    let mut buf = Vec::new();
-    let mut rootfiles = Vec::new();
-    while let Ok(event) = reader.read_event_into(&mut buf) {
-        match event {
-            Event::Start(tag) | Event::Empty(tag) => {
-                if tag.local_name().as_ref() != b"rootfile" {
-                    continue;
-                }
-                let mut full_path = None;
-                let mut media_type = String::new();
-                for attr in tag.attributes().flatten() {
-                    match attr.key.local_name().as_ref() {
-                        b"full-path" => {
-                            full_path = attr
-                                .unescape_value()
-                                .ok()
-                                .map(|value| value.into_owned());
-                        }
-                        b"media-type" => {
-                            media_type = attr
-                                .unescape_value()
-                                .ok()
-                                .map(|value| value.into_owned())
-                                .unwrap_or_default();
-                        }
-                        _ => {}
-                    }
-                }
-                if let Some(full_path) = full_path {
-                    rootfiles.push(ContainerRootFile {
-                        full_path,
-                        media_type,
-                    });
-                }
-            }
-            Event::Eof => break,
-            _ => {}
-        }
-        buf.clear();
-    }
+    let value = parse_xml_bytes(xml)?;
+    let document = document_root(&value)?;
+    let rootfiles = elements_by_local_name(document, "rootfile")
+        .into_iter()
+        .filter_map(|element| {
+            let full_path = attribute_value(element, "full-path")?;
+            let media_type = attribute_value(element, "media-type").unwrap_or_default();
+            Some(ContainerRootFile {
+                full_path,
+                media_type,
+            })
+        })
+        .collect::<Vec<_>>();
 
     if rootfiles.is_empty() {
         return Err("container.xml has no rootfile".into());
