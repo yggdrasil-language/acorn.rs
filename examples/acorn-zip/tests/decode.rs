@@ -6,15 +6,14 @@ use acorn_source::MemorySource;
 use acorn_zip::{index_zip_bytes, read_member_payload, COMPRESSION_DEFLATE};
 
 use common::minimal_single_file_zip;
-use flate2::{Compress, Compression, FlushCompress};
+use flate2::write::DeflateEncoder;
+use flate2::Compression;
+use std::io::Write;
 
 fn raw_deflate(data: &[u8]) -> Vec<u8> {
-    let mut compressor = Compress::new(Compression::default(), false);
-    let mut output = Vec::new();
-    compressor
-        .compress_vec(data, &mut output, FlushCompress::Finish)
-        .expect("compress");
-    output
+    let mut encoder = DeflateEncoder::new(Vec::new(), Compression::default());
+    encoder.write_all(data).expect("compress");
+    encoder.finish().expect("finish deflate")
 }
 
 fn deflate_zip(name: &[u8], payload: &[u8], compressed: &[u8]) -> Vec<u8> {
@@ -75,7 +74,6 @@ fn minimal_deflated_zip() -> Vec<u8> {
 }
 
 #[test]
-#[ignore = "deflate fixture builder still needs hardening against indexer edge cases"]
 fn decodes_deflated_member_payload() {
     let bytes = minimal_deflated_zip();
     let index = index_zip_bytes("deflate.zip", bytes.clone()).expect("index");
