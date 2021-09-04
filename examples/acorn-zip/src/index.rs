@@ -167,6 +167,9 @@ fn parse_central_directory(
                 needs_uncompressed,
                 needs_compressed,
                 needs_local_offset,
+                uncompressed32,
+                compressed32,
+                local_offset32,
             )
             .ok_or(ZipIndexError::MalformedEntry {
                 offset: offset as u64,

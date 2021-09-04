@@ -21,6 +21,9 @@ pub fn parse_zip64_extra(
     needs_uncompressed: bool,
     needs_compressed: bool,
     needs_local_offset: bool,
+    fallback_uncompressed: u32,
+    fallback_compressed: u32,
+    fallback_local_offset: u32,
 ) -> Option<Zip64Fields> {
     let extra_end = extra_start.checked_add(extra_length)?;
     if extra_end > bytes.len() {
@@ -57,9 +60,9 @@ pub fn parse_zip64_extra(
     }
 
     Some(Zip64Fields {
-        uncompressed_size: uncompressed.unwrap_or(0),
-        compressed_size: compressed.unwrap_or(0),
-        local_header_offset: local_offset.unwrap_or(0),
+        uncompressed_size: uncompressed.unwrap_or(fallback_uncompressed as u64),
+        compressed_size: compressed.unwrap_or(fallback_compressed as u64),
+        local_header_offset: local_offset.unwrap_or(fallback_local_offset as u64),
     })
 }
 
@@ -107,10 +110,20 @@ mod tests {
         extra.extend_from_slice(&8u16.to_le_bytes());
         extra.extend_from_slice(&uncompressed.to_le_bytes());
 
-        let fields = parse_zip64_extra(&extra, 0, extra.len(), true, false, false)
+        let fields = parse_zip64_extra(
+            &extra,
+            0,
+            extra.len(),
+            true,
+            false,
+            false,
+            0,
+            512,
+            0,
+        )
             .expect("zip64 extra");
         assert_eq!(fields.uncompressed_size, uncompressed);
-        assert_eq!(fields.compressed_size, 0);
+        assert_eq!(fields.compressed_size, 512);
         assert_eq!(fields.local_header_offset, 0);
     }
 }

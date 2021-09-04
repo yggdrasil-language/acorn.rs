@@ -40,3 +40,73 @@ fn indexes_zip64_eocd_with_sentinel_fields() {
     assert_eq!(index.eocd.central_directory_offset, cd_offset);
     assert_eq!(index.members.len(), 1);
 }
+
+#[test]
+fn indexes_zip64_member_extra_uncompressed_size() {
+    let payload = vec![b'x'; 512];
+    let name = b"a";
+    let crc = crc32(&payload);
+    let uncompressed = payload.len() as u64;
+    let zip64_extra = zip64_extra_uncompressed(uncompressed);
+
+    let mut archive = Vec::new();
+    archive.extend_from_slice(b"PK\x03\x04");
+    archive.extend_from_slice(&[0x14, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+    archive.extend_from_slice(&crc.to_le_bytes());
+    archive.extend_from_slice(&(payload.len() as u32).to_le_bytes());
+    archive.extend_from_slice(&(payload.len() as u32).to_le_bytes());
+    archive.extend_from_slice(&(name.len() as u16).to_le_bytes());
+    archive.extend_from_slice(&[0x00, 0x00]);
+    archive.extend_from_slice(name);
+    archive.extend_from_slice(&payload);
+
+    let cd_offset = archive.len();
+    archive.extend_from_slice(b"PK\x01\x02");
+    let mut cd_fixed = [0u8; 46];
+    cd_fixed[0..2].copy_from_slice(&[0x14, 0x00]);
+    cd_fixed[2..4].copy_from_slice(&[0x14, 0x00]);
+    cd_fixed[12..16].copy_from_slice(&crc.to_le_bytes());
+    cd_fixed[16..20].copy_from_slice(&(payload.len() as u32).to_le_bytes());
+    cd_fixed[20..24].copy_from_slice(&[0xff, 0xff, 0xff, 0xff]);
+    cd_fixed[24..26].copy_from_slice(&(name.len() as u16).to_le_bytes());
+    cd_fixed[26..28].copy_from_slice(&(zip64_extra.len() as u16).to_le_bytes());
+    cd_fixed[38..42].copy_from_slice(&0u32.to_le_bytes());
+    archive.extend_from_slice(&cd_fixed);
+    archive.extend_from_slice(name);
+    archive.extend_from_slice(&zip64_extra);
+
+    let cd_size = archive.len() - cd_offset;
+    archive.extend_from_slice(b"PK\x05\x06");
+    archive.extend_from_slice(&[0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00]);
+    archive.extend_from_slice(&(cd_size as u32).to_le_bytes());
+    archive.extend_from_slice(&(cd_offset as u32).to_le_bytes());
+    archive.extend_from_slice(&[0x00, 0x00]);
+
+    let index = index_zip_bytes("zip64-member.zip", archive).expect("index");
+    assert_eq!(index.members.len(), 1);
+    assert_eq!(index.members[0].uncompressed_size, uncompressed);
+    assert_eq!(index.members[0].compressed_size, uncompressed);
+}
+
+fn zip64_extra_uncompressed(uncompressed: u64) -> Vec<u8> {
+    let mut extra = Vec::new();
+    extra.extend_from_slice(&0x0001u16.to_le_bytes());
+    extra.extend_from_slice(&8u16.to_le_bytes());
+    extra.extend_from_slice(&uncompressed.to_le_bytes());
+    extra
+}
+
+fn crc32(data: &[u8]) -> u32 {
+    let mut crc = 0xFFFF_FFFFu32;
+    for byte in data {
+        crc ^= u32::from(*byte);
+        for _ in 0..8 {
+            let bit = crc & 1;
+            crc >>= 1;
+            if bit != 0 {
+                crc ^= 0xEDB8_8320;
+            }
+        }
+    }
+    crc ^ 0xFFFF_FFFF
+}
