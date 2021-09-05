@@ -1,3 +1,0 @@
-♻️ Fold `acorn-diagnostic` into `acorn-core::diagnostic`
-
-Move `acorn.*` codes, budget usage, and builders onto the shared `diagnostic` contract inside `acorn-core`, then remove the standalone `acorn-diagnostic` crate from the workspace.
