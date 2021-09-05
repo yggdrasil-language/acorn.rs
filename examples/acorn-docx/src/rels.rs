@@ -2,9 +2,17 @@ use std::collections::HashMap;
 
 use acorn_core::ParseBudget;
 
+use crate::package::normalize_part_path;
 use crate::OpcPackage;
 use crate::xml::{attribute_value, document_root, elements_by_local_name, parse_xml_bytes};
 use crate::OpcError;
+
+/// Package root relationships part path.
+pub const ROOT_RELS_PATH: &str = "_rels/.rels";
+
+/// Office main document relationship type URI.
+pub const OFFICE_DOCUMENT_RELATIONSHIP_TYPE: &str =
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument";
 
 /// One OPC relationship entry.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -53,6 +61,24 @@ pub fn parse_relationship_targets(xml: &[u8]) -> Result<HashMap<String, String>,
     Ok(targets)
 }
 
+/// Resolves an OPC relationship target relative to the owning part path.
+pub fn resolve_opc_target(source_part: &str, target: &str) -> String {
+    if target.starts_with('/') {
+        return normalize_part_path(target);
+    }
+    let source = normalize_part_path(source_part);
+    let base_dir = source
+        .rfind('/')
+        .map(|index| source[..index].to_string())
+        .unwrap_or_default();
+    let combined = if base_dir.is_empty() {
+        target.to_string()
+    } else {
+        format!("{base_dir}/{target}")
+    };
+    normalize_part_path(&combined)
+}
+
 impl OpcPackage {
     /// Reads and parses an OPC relationships part (for example `word/_rels/document.xml.rels`).
     pub fn read_relationships(
@@ -75,5 +101,30 @@ impl OpcPackage {
             Err(OpcError::PartNotFound(_)) => Ok(HashMap::new()),
             Err(error) => Err(error),
         }
+    }
+
+    /// Reads package root relationships from `_rels/.rels`.
+    pub fn read_root_relationships(
+        &self,
+        budget: &ParseBudget,
+    ) -> Result<Vec<OpcRelationship>, OpcError> {
+        match self.read_relationships(ROOT_RELS_PATH, budget) {
+            Ok(relationships) => Ok(relationships),
+            Err(OpcError::PartNotFound(_)) => Ok(Vec::new()),
+            Err(error) => Err(error),
+        }
+    }
+
+    /// Resolves the main WordprocessingML document part path from root relationships.
+    pub fn main_document_part_path(
+        &self,
+        budget: &ParseBudget,
+    ) -> Result<Option<String>, OpcError> {
+        for relationship in self.read_root_relationships(budget)? {
+            if relationship.relationship_type == OFFICE_DOCUMENT_RELATIONSHIP_TYPE {
+                return Ok(Some(resolve_opc_target("", &relationship.target)));
+            }
+        }
+        Ok(None)
     }
 }
