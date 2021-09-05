@@ -11,7 +11,6 @@ publish = false
 
 [dependencies]
 acorn-core = { workspace = true }
-acorn-diagnostic = { workspace = true }
 acorn-probe = { workspace = true }
 acorn-source = { workspace = true }
 flate2 = { workspace = true }

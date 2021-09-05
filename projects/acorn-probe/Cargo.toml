@@ -12,7 +12,6 @@ keywords = ["binary", "magic", "probe", "parser"]
 
 [dependencies]
 acorn-core = { workspace = true }
-acorn-diagnostic = { workspace = true }
 acorn-source = { workspace = true }
 
 [dev-dependencies]

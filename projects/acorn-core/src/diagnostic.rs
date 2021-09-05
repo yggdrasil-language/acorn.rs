@@ -1,4 +1,3 @@
-#![warn(missing_docs)]
 //! Acorn domain diagnostic codes and builders on top of `diagnostic`.
 //!
 //! Stable `acorn.*` codes, budget usage, and conversion helpers. Rendering and
@@ -14,16 +13,27 @@ pub use diagnostic::{
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum DiagnosticCode {
+    /// Probe signature did not match any known format.
     MagicMismatch,
+    /// Input ended before a declared structure completed.
     Truncated,
+    /// Offset arithmetic overflowed the address space.
     OffsetOverflow,
+    /// Offset points outside the available source range.
     OffsetOutOfRange,
+    /// Field or member violates alignment constraints.
     Alignment,
+    /// Reference graph contains a cycle.
     ReferenceCycle,
+    /// Two structures claim the same byte range.
     Overlap,
+    /// Checksum or hash validation failed.
     Checksum,
+    /// Format version is recognized but unsupported.
     UnsupportedVersion,
+    /// Parsing stopped because a budget limit was reached.
     ResourceLimit,
+    /// Additional byte ranges are required to continue.
     NeedRange,
 }
 
@@ -114,13 +124,22 @@ pub mod actions {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BudgetUsage {
+    /// Raw bytes read from sources.
     pub read_bytes: u64,
+    /// Bytes materialized in decoded address spaces.
     pub decoded_bytes: u64,
+    /// Layout nodes allocated.
     pub nodes: u64,
+    /// Reference edges recorded or followed.
     pub references: u64,
+    /// Pointer hops during traversal.
     pub pointer_hops: u64,
+    /// Bytes scanned during signature or window search.
     pub scan_bytes: u64,
+    /// Bytes retained in caches.
     pub cache_bytes: u64,
+    /// Current envelope nesting depth.
     pub envelope_depth: u32,
+    /// Container members indexed in the current query.
     pub container_members: u64,
 }

@@ -11,7 +11,6 @@ categories = ["parsing"]
 keywords = ["binary", "parser", "source"]
 
 [dependencies]
-acorn-diagnostic = { workspace = true }
 thiserror = { workspace = true }
 
 [features]
