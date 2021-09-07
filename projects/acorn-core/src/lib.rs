@@ -12,6 +12,7 @@ mod partial;
 mod reference;
 mod span;
 mod state;
+mod write_plan;
 
 pub use address::{Address, AddressSpaceId, AddressSpaceKind, ByteRange, RangeError};
 pub use budget::{BudgetError, BudgetTracker, ParseBudget};
@@ -23,3 +24,7 @@ pub use reference::{
 };
 pub use span::{Provenance, ProvenanceStep, Span};
 pub use state::NodeState;
+pub use write_plan::{
+    Endian, LayoutPlan, PatchPoint, PlanError, PlanSlot, PlanSlotId, Relocation, RelocationId,
+    RelocationTarget,
+};
