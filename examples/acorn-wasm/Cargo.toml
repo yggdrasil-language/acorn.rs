@@ -1,0 +1,11 @@
+[package]
+name = "acorn-wasm"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Wasm binary format encoding and decoding (Acorn domain)"
+repository = "https://github.com/nyar-vm/nyar-vm.rs"
+
+[dependencies]
+serde = { workspace = true }
