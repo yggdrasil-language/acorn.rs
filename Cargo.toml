@@ -34,6 +34,7 @@ acorn-probe = { path = "projects/acorn-probe" }
 acorn-zip = { path = "examples/acorn-zip" }
 acorn-docx = { path = "examples/acorn-docx" }
 acorn-epub = { path = "examples/acorn-epub" }
+acorn-wasm = { path = "examples/acorn-wasm" }
 oak-core = { git = "https://github.com/yggdrasil-language/oak.rs.git", branch = "dev", default-features = false, features = ["serde"] }
 oak-xml = { git = "https://github.com/yggdrasil-language/oak.rs.git", branch = "dev", default-features = false, features = ["serde"] }
 
