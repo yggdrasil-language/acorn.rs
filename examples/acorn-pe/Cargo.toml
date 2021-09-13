@@ -1,0 +1,12 @@
+[package]
+name = "acorn-pe"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "PE, COFF, and ELF binary format encoding (Acorn domain)"
+repository = "https://github.com/yggdrasil-language/acorn.rs"
+
+[dependencies]
+miette = { workspace = true }
+serde = { workspace = true }
