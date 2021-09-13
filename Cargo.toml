@@ -25,6 +25,7 @@ repository = "https://github.com/yggdrasil-language/acorn.rs"
 [workspace.dependencies]
 thiserror = "2.0.18"
 serde = { version = "1.0.228", features = ["derive"] }
+zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
 flate2 = { version = "1.1.5", default-features = false, features = ["rust_backend"] }
 diagnostic = { git = "https://github.com/oovm/rust-boost", branch = "dev", package = "diagnostic", default-features = false, features = ["std", "serde"] }
 
@@ -35,6 +36,7 @@ acorn-zip = { path = "examples/acorn-zip" }
 acorn-docx = { path = "examples/acorn-docx" }
 acorn-epub = { path = "examples/acorn-epub" }
 acorn-wasm = { path = "examples/acorn-wasm" }
+acorn-jvm = { path = "examples/acorn-jvm" }
 oak-core = { git = "https://github.com/yggdrasil-language/oak.rs.git", branch = "dev", default-features = false, features = ["serde"] }
 oak-xml = { git = "https://github.com/yggdrasil-language/oak.rs.git", branch = "dev", default-features = false, features = ["serde"] }
 
