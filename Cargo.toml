@@ -34,6 +34,7 @@ acorn-core = { path = "projects/acorn-core" }
 acorn-source = { path = "projects/acorn-source" }
 acorn-probe = { path = "projects/acorn-probe" }
 acorn-zip = { path = "examples/acorn-zip" }
+acorn-cfb = { path = "examples/acorn-cfb" }
 acorn-docx = { path = "examples/acorn-docx" }
 acorn-epub = { path = "examples/acorn-epub" }
 acorn-wasm = { path = "examples/acorn-wasm" }
