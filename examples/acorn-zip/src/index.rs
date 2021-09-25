@@ -137,7 +137,10 @@ fn parse_central_directory(
                 offset: offset as u64,
             });
         }
+        let version_needed = read_u16_le(bytes, offset + 6).unwrap_or(0);
+        let general_purpose_bit_flag = read_u16_le(bytes, offset + 8).unwrap_or(0);
         let compression_method = read_u16_le(bytes, offset + 10).unwrap_or(0);
+        let crc32 = read_u32_le(bytes, offset + 16).unwrap_or(0);
         let compressed32 = read_u32_le(bytes, offset + 20).unwrap_or(0);
         let uncompressed32 = read_u32_le(bytes, offset + 24).unwrap_or(0);
         let name_length = read_u16_le(bytes, offset + 28).unwrap_or(0) as usize;
@@ -207,10 +210,13 @@ fn parse_central_directory(
 
         members.push(ZipMember {
             path,
+            version_needed,
+            general_purpose_bit_flag,
+            compression_method,
+            crc32,
             local_header_offset: zip64.local_header_offset,
             compressed_size: zip64.compressed_size,
             uncompressed_size: zip64.uncompressed_size,
-            compression_method,
             data_range,
             payload_range,
         });
