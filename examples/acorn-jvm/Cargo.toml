@@ -8,5 +8,7 @@ description = "JVM class and JAR binary format encoding (Acorn domain)"
 repository = "https://github.com/yggdrasil-language/acorn.rs"
 
 [dependencies]
+acorn-core = { workspace = true }
+acorn-source = { workspace = true }
+acorn-zip = { workspace = true }
 serde = { workspace = true }
-zip = { workspace = true }

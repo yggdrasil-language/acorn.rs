@@ -238,7 +238,12 @@ pub struct JvmMethodSignature {
 
 impl Default for JvmMethodSignature {
     fn default() -> Self {
-        Self { name: String::new(), descriptor: JvmMethodDescriptor::default(), access_flags: ACC_PUBLIC | ACC_STATIC, code: None }
+        Self {
+            name: String::new(),
+            descriptor: JvmMethodDescriptor::default(),
+            access_flags: ACC_PUBLIC | ACC_STATIC,
+            code: None,
+        }
     }
 }
 
@@ -640,7 +645,12 @@ impl JvmClassFile {
 
     /// 追加一个方法签名。
     pub fn push_method(&mut self, name: impl Into<String>, descriptor: JvmMethodDescriptor) {
-        self.methods.push(JvmMethodSignature { name: name.into(), descriptor, access_flags: ACC_PUBLIC | ACC_STATIC, code: None });
+        self.methods.push(JvmMethodSignature {
+            name: name.into(),
+            descriptor,
+            access_flags: ACC_PUBLIC | ACC_STATIC,
+            code: None,
+        });
     }
 
     /// 对类中的静态自尾递归方法执行循环化改写。
@@ -651,7 +661,12 @@ impl JvmClassFile {
             else {
                 continue;
             };
-            if code.optimize_static_self_tail_recursion(&self.internal_name, &method.name, &method.descriptor, method.access_flags)? {
+            if code.optimize_static_self_tail_recursion(
+                &self.internal_name,
+                &method.name,
+                &method.descriptor,
+                method.access_flags,
+            )? {
                 optimized += 1;
             }
         }
@@ -679,7 +694,8 @@ impl JvmClassFile {
                 else {
                     None
                 };
-                let mut code = method.code.clone().unwrap_or(build_default_method_code(method, &self.super_name, super_init_methodref)?);
+                let mut code =
+                    method.code.clone().unwrap_or(build_default_method_code(method, &self.super_name, super_init_methodref)?);
                 // HotSpot rejects Code.max_locals < argument slots ("Arguments can't fit into
                 // locals"). Emitters that count parameters instead of JVM width (J/D = 2) under-size
                 // stubs such as Fine(JJ)I / infix^(IJJ)I — clamp at write time as the last line of defense.
@@ -776,7 +792,10 @@ impl JvmClassFile {
             fields.push(JvmFieldSignature {
                 name: constants.utf8(name_index)?,
                 descriptor: parse_type_descriptor(&constants.utf8(descriptor_index)?).ok_or_else(|| {
-                    JvmClassError::InvalidFormat(format!("无效的字段描述符：{}", constants.utf8(descriptor_index).unwrap_or_default()))
+                    JvmClassError::InvalidFormat(format!(
+                        "无效的字段描述符：{}",
+                        constants.utf8(descriptor_index).unwrap_or_default()
+                    ))
                 })?,
                 access_flags: field_access_flags,
             });
@@ -888,7 +907,8 @@ impl ConstantPool {
                 1 => {
                     let length = reader.read_u16()? as usize;
                     let bytes = reader.read_bytes(length)?;
-                    let value = String::from_utf8(bytes.to_vec()).map_err(|_| JvmClassError::InvalidFormat("UTF-8 常量无效".to_string()))?;
+                    let value = String::from_utf8(bytes.to_vec())
+                        .map_err(|_| JvmClassError::InvalidFormat("UTF-8 常量无效".to_string()))?;
                     ConstantPoolEntry::Utf8(value)
                 }
                 3 => ConstantPoolEntry::Integer(reader.read_u32()?),
@@ -909,9 +929,14 @@ impl ConstantPool {
                 8 => ConstantPoolEntry::String(reader.read_u16()?),
                 9 => ConstantPoolEntry::Fieldref { class_index: reader.read_u16()?, name_and_type_index: reader.read_u16()? },
                 10 => ConstantPoolEntry::Methodref { class_index: reader.read_u16()?, name_and_type_index: reader.read_u16()? },
-                11 => ConstantPoolEntry::InterfaceMethodref { class_index: reader.read_u16()?, name_and_type_index: reader.read_u16()? },
+                11 => ConstantPoolEntry::InterfaceMethodref {
+                    class_index: reader.read_u16()?,
+                    name_and_type_index: reader.read_u16()?,
+                },
                 12 => ConstantPoolEntry::NameAndType { name_index: reader.read_u16()?, descriptor_index: reader.read_u16()? },
-                15 => ConstantPoolEntry::MethodHandle { reference_kind: reader.read_u8()?, reference_index: reader.read_u16()? },
+                15 => {
+                    ConstantPoolEntry::MethodHandle { reference_kind: reader.read_u8()?, reference_index: reader.read_u16()? }
+                }
                 16 => ConstantPoolEntry::MethodType(reader.read_u16()?),
                 18 => ConstantPoolEntry::InvokeDynamic {
                     bootstrap_method_attr_index: reader.read_u16()?,
@@ -991,7 +1016,9 @@ impl ConstantPool {
     pub fn method_ref(&self, index: u16) -> Option<JvmMethodRef> {
         let (class_index, name_and_type_index) = match self.entries.get(index as usize)? {
             ConstantPoolEntry::Methodref { class_index, name_and_type_index }
-            | ConstantPoolEntry::InterfaceMethodref { class_index, name_and_type_index } => (*class_index, *name_and_type_index),
+            | ConstantPoolEntry::InterfaceMethodref { class_index, name_and_type_index } => {
+                (*class_index, *name_and_type_index)
+            }
             _ => return None,
         };
         let owner = self.class_name(class_index).ok()?;
@@ -1165,7 +1192,8 @@ impl ConstantPoolBuilder {
             match entry {
                 BuilderEntry::Utf8(value) => {
                     let bytes = value.as_bytes();
-                    let length = u16::try_from(bytes.len()).map_err(|_| JvmClassError::InvalidFormat("UTF-8 常量过长".to_string()))?;
+                    let length =
+                        u16::try_from(bytes.len()).map_err(|_| JvmClassError::InvalidFormat("UTF-8 常量过长".to_string()))?;
                     writer.write_u8(1);
                     writer.write_u16(length);
                     writer.write_bytes(bytes);
@@ -1247,9 +1275,11 @@ fn build_default_method_code(
     }
 
     match method.descriptor.return_type {
-        JvmTypeDescriptor::Void => {
-            Ok(JvmCodeBody { max_stack: 0, max_locals: compute_max_locals(method)?, instructions: vec![JvmInstruction::Return] })
-        }
+        JvmTypeDescriptor::Void => Ok(JvmCodeBody {
+            max_stack: 0,
+            max_locals: compute_max_locals(method)?,
+            instructions: vec![JvmInstruction::Return],
+        }),
         JvmTypeDescriptor::Long => Ok(JvmCodeBody {
             max_stack: 2,
             max_locals: compute_max_locals(method)?,
@@ -1703,7 +1733,8 @@ fn encode_branch_target(
     bytes: &mut Vec<u8>,
 ) -> Result<(), JvmClassError> {
     // JVM branch offsets are relative to the branch opcode address, not the next PC.
-    let target = label_offsets.get(label).copied().ok_or_else(|| JvmClassError::InvalidFormat(format!("找不到跳转标签 {label}")))?;
+    let target =
+        label_offsets.get(label).copied().ok_or_else(|| JvmClassError::InvalidFormat(format!("找不到跳转标签 {label}")))?;
     let relative = target as isize - offset as isize;
     bytes.extend_from_slice(&(relative as i16).to_be_bytes());
     Ok(())
@@ -1869,9 +1900,16 @@ pub fn decode_instructions(code: &[u8], constant_pool: &ConstantPool) -> Vec<Dec
 }
 
 /// 解码单条指令，返回 (助记符, 指令长度, 操作数)。
-fn decode_single_instruction(opcode: u8, rest: &[u8], pc: usize, pool: &ConstantPool) -> (String, usize, Option<DecodedJvmOperand>) {
-    let read_u16_at = |pos: usize| u16::from_be_bytes([rest.get(pos).copied().unwrap_or(0), rest.get(pos + 1).copied().unwrap_or(0)]);
-    let read_i16_at = |pos: usize| i16::from_be_bytes([rest.get(pos).copied().unwrap_or(0), rest.get(pos + 1).copied().unwrap_or(0)]) as i32;
+fn decode_single_instruction(
+    opcode: u8,
+    rest: &[u8],
+    pc: usize,
+    pool: &ConstantPool,
+) -> (String, usize, Option<DecodedJvmOperand>) {
+    let read_u16_at =
+        |pos: usize| u16::from_be_bytes([rest.get(pos).copied().unwrap_or(0), rest.get(pos + 1).copied().unwrap_or(0)]);
+    let read_i16_at =
+        |pos: usize| i16::from_be_bytes([rest.get(pos).copied().unwrap_or(0), rest.get(pos + 1).copied().unwrap_or(0)]) as i32;
     let read_i32_at = |pos: usize| {
         i32::from_be_bytes([
             rest.get(pos).copied().unwrap_or(0),
