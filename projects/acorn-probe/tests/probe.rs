@@ -1,4 +1,4 @@
-use acorn_probe::{probe_memory, Confidence, ProbeSession};
+use acorn_probe::{Confidence, ProbeSession, probe_memory};
 use acorn_source::MemorySource;
 
 #[test]

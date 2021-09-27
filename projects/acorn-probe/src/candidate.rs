@@ -22,11 +22,7 @@ pub struct ProbeCandidate {
 }
 
 impl ProbeCandidate {
-    pub(crate) fn from_signature_hit(
-        format_id: String,
-        evidence: ByteRange,
-        anchor_label: &str,
-    ) -> Self {
+    pub(crate) fn from_signature_hit(format_id: String, evidence: ByteRange, anchor_label: &str) -> Self {
         Self {
             format_id,
             confidence: Confidence::Candidate,

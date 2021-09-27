@@ -9,7 +9,5 @@ mod probe;
 mod signature;
 
 pub use candidate::{Confidence, ProbeCandidate};
-pub use probe::{
-    document_container_signatures, probe_memory, ProbeBudget, ProbeSession,
-};
+pub use probe::{ProbeBudget, ProbeSession, document_container_signatures, probe_memory};
 pub use signature::{BytePattern, ProbeAnchor, Signature};

@@ -1,8 +1,10 @@
 use acorn_core::ByteRange;
 use acorn_source::{ByteSource, MemorySource, ReadOutcome};
 
-use crate::candidate::ProbeCandidate;
-use crate::signature::{ProbeAnchor, Signature};
+use crate::{
+    candidate::ProbeCandidate,
+    signature::{ProbeAnchor, Signature},
+};
 
 /// Limits for bounded signature search.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -13,10 +15,7 @@ pub struct ProbeBudget {
 
 impl Default for ProbeBudget {
     fn default() -> Self {
-        Self {
-            max_scan_bytes: 64 * 1024,
-            max_hits_per_signature: 8,
-        }
+        Self { max_scan_bytes: 64 * 1024, max_hits_per_signature: 8 }
     }
 }
 
@@ -36,8 +35,7 @@ impl ProbeSession {
     /// Registers a signature. Higher `priority` values are listed first.
     pub fn register(&mut self, signature: Signature) {
         self.signatures.push(signature);
-        self.signatures
-            .sort_by(|left, right| right.priority.cmp(&left.priority));
+        self.signatures.sort_by(|left, right| right.priority.cmp(&left.priority));
     }
 
     /// Overrides the probe budget for this session.
@@ -92,12 +90,7 @@ impl ProbeSession {
         }
     }
 
-    fn match_anchor<S: ByteSource>(
-        &self,
-        source: &S,
-        source_len: u64,
-        signature: &Signature,
-    ) -> Option<ProbeCandidate> {
+    fn match_anchor<S: ByteSource>(&self, source: &S, source_len: u64, signature: &Signature) -> Option<ProbeCandidate> {
         let range = signature.evidence_range(source_len)?;
         let offset = match signature.anchor {
             ProbeAnchor::Start | ProbeAnchor::Fixed(_) => range.start,
@@ -107,12 +100,7 @@ impl ProbeSession {
         self.match_at(source, signature, offset)
     }
 
-    fn match_at<S: ByteSource>(
-        &self,
-        source: &S,
-        signature: &Signature,
-        offset: u64,
-    ) -> Option<ProbeCandidate> {
+    fn match_at<S: ByteSource>(&self, source: &S, signature: &Signature, offset: u64) -> Option<ProbeCandidate> {
         let pattern_len = signature.pattern.bytes.len();
         let mut buffer = vec![0u8; pattern_len];
         match source.read_at(offset, &mut buffer) {
@@ -122,15 +110,8 @@ impl ProbeSession {
         if !signature.pattern.matches_at(&buffer) {
             return None;
         }
-        let evidence = ByteRange {
-            start: offset,
-            len: pattern_len as u64,
-        };
-        Some(ProbeCandidate::from_signature_hit(
-            signature.format_id.clone(),
-            evidence,
-            anchor_label(&signature.anchor),
-        ))
+        let evidence = ByteRange { start: offset, len: pattern_len as u64 };
+        Some(ProbeCandidate::from_signature_hit(signature.format_id.clone(), evidence, anchor_label(&signature.anchor)))
     }
 }
 
