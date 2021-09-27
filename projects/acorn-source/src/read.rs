@@ -1,4 +1,4 @@
-use thiserror::Error;
+use std::fmt;
 
 /// A half-open byte interval for source reads.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -10,15 +10,24 @@ pub struct SourceRange {
 }
 
 /// Errors from checked source range arithmetic.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RangeError {
     /// `start + len` overflowed `u64`.
-    #[error("source range overflow")]
     Overflow,
     /// Range end exceeds the known source length.
-    #[error("source range out of bounds")]
     OutOfBounds,
 }
+
+impl fmt::Display for RangeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Overflow => write!(f, "source range overflow"),
+            Self::OutOfBounds => write!(f, "source range out of bounds"),
+        }
+    }
+}
+
+impl std::error::Error for RangeError {}
 
 impl SourceRange {
     /// Creates a range after validating `start + len`.

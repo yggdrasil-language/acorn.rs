@@ -1,3 +1,5 @@
+use std::fmt;
+
 use crate::address::{AddressSpaceId, ByteRange, RangeError};
 
 /// Semantic category of a format reference field.
@@ -39,20 +41,42 @@ pub struct ReferenceEvidence {
 }
 
 /// Errors from checked jump arithmetic.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum JumpError {
     /// Integer overflow while computing a target range.
-    #[error("jump target overflow")]
     Overflow,
     /// Target range exceeds the address space bounds.
-    #[error("jump target out of bounds")]
     OutOfBounds,
     /// Basis and target are not in the same address space.
-    #[error("address space mismatch")]
     SpaceMismatch,
     /// Underlying range arithmetic failed.
-    #[error("range error: {0}")]
-    Range(#[from] RangeError),
+    Range(RangeError),
+}
+
+impl fmt::Display for JumpError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Overflow => write!(f, "jump target overflow"),
+            Self::OutOfBounds => write!(f, "jump target out of bounds"),
+            Self::SpaceMismatch => write!(f, "address space mismatch"),
+            Self::Range(error) => write!(f, "range error: {error}"),
+        }
+    }
+}
+
+impl std::error::Error for JumpError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Range(error) => Some(error),
+            _ => None,
+        }
+    }
+}
+
+impl From<RangeError> for JumpError {
+    fn from(error: RangeError) -> Self {
+        Self::Range(error)
+    }
 }
 
 /// Identity used to detect revisits during bounded graph traversal.
@@ -73,12 +97,7 @@ impl VisitKey {
 }
 
 /// Resolves an absolute offset into a bounded byte range.
-pub fn checked_absolute_jump(
-    _space: AddressSpaceId,
-    space_len: u64,
-    offset: u64,
-    len: u64,
-) -> Result<ByteRange, JumpError> {
+pub fn checked_absolute_jump(_space: AddressSpaceId, space_len: u64, offset: u64, len: u64) -> Result<ByteRange, JumpError> {
     let target = ByteRange::new(offset, len)?;
     target.fits_in(space_len)?;
     Ok(target)
@@ -92,10 +111,7 @@ pub fn checked_relative_jump(
     relative: u64,
     len: u64,
 ) -> Result<ByteRange, JumpError> {
-    let start = basis
-        .start
-        .checked_add(relative)
-        .ok_or(JumpError::Overflow)?;
+    let start = basis.start.checked_add(relative).ok_or(JumpError::Overflow)?;
     let target = ByteRange::new(start, len)?;
     target.fits_in(space_len)?;
     Ok(target)

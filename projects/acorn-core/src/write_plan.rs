@@ -96,47 +96,47 @@ pub struct LayoutPlan {
 }
 
 /// Errors while building or finalizing a layout plan.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PlanError {
     /// Alignment must be a power of two.
-    #[error("alignment must be a power of two, got {alignment}")]
     InvalidAlignment {
         /// Requested alignment.
         alignment: u32,
     },
     /// Slot size must be non-zero.
-    #[error("slot size must be greater than zero")]
     EmptySlot,
     /// Referenced slot or relocation does not exist.
-    #[error("unknown plan reference")]
     UnknownReference,
     /// Plan was already finalized.
-    #[error("layout plan is already finalized")]
     AlreadyFinalized,
     /// Plan must be finalized before lookup.
-    #[error("layout plan is not finalized")]
     NotFinalized,
 }
+
+impl std::fmt::Display for PlanError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidAlignment { alignment } => {
+                write!(f, "alignment must be a power of two, got {alignment}")
+            }
+            Self::EmptySlot => write!(f, "slot size must be greater than zero"),
+            Self::UnknownReference => write!(f, "unknown plan reference"),
+            Self::AlreadyFinalized => write!(f, "layout plan is already finalized"),
+            Self::NotFinalized => write!(f, "layout plan is not finalized"),
+        }
+    }
+}
+
+impl std::error::Error for PlanError {}
 
 impl LayoutPlan {
     /// Creates an empty plan for one address space.
     pub fn new(space: AddressSpaceId) -> Self {
-        Self {
-            space,
-            slots: Vec::new(),
-            relocations: Vec::new(),
-            patch_points: Vec::new(),
-            finalized_len: None,
-        }
+        Self { space, slots: Vec::new(), relocations: Vec::new(), patch_points: Vec::new(), finalized_len: None }
     }
 
     /// Adds a slot with required alignment and size.
-    pub fn add_slot(
-        &mut self,
-        label: impl Into<String>,
-        alignment: u32,
-        size: u64,
-    ) -> Result<PlanSlotId, PlanError> {
+    pub fn add_slot(&mut self, label: impl Into<String>, alignment: u32, size: u64) -> Result<PlanSlotId, PlanError> {
         if self.finalized_len.is_some() {
             return Err(PlanError::AlreadyFinalized);
         }
@@ -147,13 +147,7 @@ impl LayoutPlan {
             return Err(PlanError::EmptySlot);
         }
         let id = PlanSlotId(self.slots.len() as u64 + 1);
-        self.slots.push(PlanSlot {
-            id,
-            label: label.into(),
-            alignment,
-            size,
-            offset: None,
-        });
+        self.slots.push(PlanSlot { id, label: label.into(), alignment, size, offset: None });
         Ok(id)
     }
 
@@ -163,11 +157,7 @@ impl LayoutPlan {
             return Err(PlanError::AlreadyFinalized);
         }
         let id = RelocationId(self.relocations.len() as u64 + 1);
-        self.relocations.push(Relocation {
-            id,
-            target,
-            resolved_offset: None,
-        });
+        self.relocations.push(Relocation { id, target, resolved_offset: None });
         Ok(id)
     }
 
@@ -192,13 +182,7 @@ impl LayoutPlan {
         if !matches!(width, 1 | 2 | 4 | 8) {
             return Err(PlanError::UnknownReference);
         }
-        self.patch_points.push(PatchPoint {
-            relocation,
-            slot,
-            offset_within_slot,
-            width,
-            endian,
-        });
+        self.patch_points.push(PatchPoint { relocation, slot, offset_within_slot, width, endian });
         Ok(())
     }
 
@@ -218,10 +202,7 @@ impl LayoutPlan {
             cursor += slot.size;
         }
         for relocation in &mut self.relocations {
-            relocation.resolved_offset = Some(resolve_relocation_target(
-                relocation.target.clone(),
-                &self.slots,
-            )?);
+            relocation.resolved_offset = Some(resolve_relocation_target(relocation.target.clone(), &self.slots)?);
         }
         self.finalized_len = Some(cursor);
         Ok(cursor)
@@ -262,10 +243,7 @@ impl LayoutPlan {
     }
 }
 
-fn resolve_relocation_target(
-    target: RelocationTarget,
-    slots: &[PlanSlot],
-) -> Result<u64, PlanError> {
+fn resolve_relocation_target(target: RelocationTarget, slots: &[PlanSlot]) -> Result<u64, PlanError> {
     match target {
         RelocationTarget::Absolute { offset } => Ok(offset),
         RelocationTarget::Slot { slot, offset_within } => {

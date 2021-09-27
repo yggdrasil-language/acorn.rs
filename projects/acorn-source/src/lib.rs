@@ -13,8 +13,8 @@ mod read;
 mod sink;
 mod sink_capabilities;
 mod source;
-mod write;
 mod window;
+mod write;
 
 pub use capabilities::SourceCapabilities;
 pub use identity::SourceIdentity;
@@ -25,5 +25,5 @@ pub use read::{RangeError, ReadOutcome, ReadResult, SourceRange};
 pub use sink::{ByteSink, WriteError};
 pub use sink_capabilities::SinkCapabilities;
 pub use source::{ByteSource, ReadError};
-pub use write::WriteOutcome;
 pub use window::ByteWindow;
+pub use write::WriteOutcome;

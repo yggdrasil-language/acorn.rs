@@ -1,6 +1,4 @@
-use acorn_core::{
-    AddressSpaceId, Endian, LayoutPlan, PlanError, RelocationTarget,
-};
+use acorn_core::{AddressSpaceId, Endian, LayoutPlan, PlanError, RelocationTarget};
 
 const OUT: AddressSpaceId = AddressSpaceId(1);
 
@@ -19,14 +17,8 @@ fn layout_plan_assigns_aligned_offsets() {
 fn layout_plan_resolves_slot_relative_relocation() {
     let mut plan = LayoutPlan::new(OUT);
     let body = plan.add_slot("body", 1, 20).expect("body");
-    let relocation = plan
-        .add_relocation(RelocationTarget::Slot {
-            slot: body,
-            offset_within: 4,
-        })
-        .expect("relocation");
-    plan.add_patch_point(relocation, body, 0, 4, Endian::Little)
-        .expect("patch");
+    let relocation = plan.add_relocation(RelocationTarget::Slot { slot: body, offset_within: 4 }).expect("relocation");
+    plan.add_patch_point(relocation, body, 0, 4, Endian::Little).expect("patch");
     plan.finalize().expect("finalize");
     let resolved = plan
         .relocations()
@@ -41,8 +33,5 @@ fn layout_plan_resolves_slot_relative_relocation() {
 fn layout_plan_rejects_invalid_alignment() {
     let mut plan = LayoutPlan::new(OUT);
     let error = plan.add_slot("bad", 3, 8).expect_err("alignment");
-    assert!(matches!(
-        error,
-        PlanError::InvalidAlignment { alignment: 3 }
-    ));
+    assert!(matches!(error, PlanError::InvalidAlignment { alignment: 3 }));
 }

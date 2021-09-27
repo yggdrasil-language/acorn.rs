@@ -11,7 +11,6 @@ categories = ["parsing"]
 keywords = ["binary", "parser", "source"]
 
 [dependencies]
-thiserror = { workspace = true }
 
 [features]
 default = ["std"]

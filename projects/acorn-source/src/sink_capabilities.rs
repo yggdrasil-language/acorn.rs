@@ -13,18 +13,8 @@ pub struct SinkCapabilities {
 
 impl SinkCapabilities {
     /// Capabilities of an in-memory growable sink.
-    pub const MEMORY: Self = Self {
-        sequential_append: true,
-        seek_write: true,
-        patch_in_place: true,
-        known_length: true,
-    };
+    pub const MEMORY: Self = Self { sequential_append: true, seek_write: true, patch_in_place: true, known_length: true };
 
     /// Capabilities of a strictly sequential sink.
-    pub const SEQUENTIAL: Self = Self {
-        sequential_append: true,
-        seek_write: false,
-        patch_in_place: false,
-        known_length: true,
-    };
+    pub const SEQUENTIAL: Self = Self { sequential_append: true, seek_write: false, patch_in_place: false, known_length: true };
 }

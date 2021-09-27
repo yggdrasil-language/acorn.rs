@@ -1,6 +1,6 @@
 use acorn_core::{
-    checked_absolute_jump, checked_relative_jump, evidence_absolute, AddressSpaceId, ByteRange,
-    JumpError, LayoutGraph, NodeState, RangeError, ReferenceEdge, VisitKey,
+    AddressSpaceId, ByteRange, JumpError, LayoutGraph, NodeState, RangeError, ReferenceEdge, VisitKey, checked_absolute_jump,
+    checked_relative_jump, evidence_absolute,
 };
 
 const FILE: AddressSpaceId = AddressSpaceId(0);
@@ -9,19 +9,14 @@ const FILE: AddressSpaceId = AddressSpaceId(0);
 fn layout_graph_indexes_nodes_by_start() {
     let mut graph = LayoutGraph::new(FILE, 1_000);
     let header = ByteRange::new(0, 30).expect("header");
-    let id = graph
-        .insert_node(NodeState::Indexed, header, "local header")
-        .expect("insert");
+    let id = graph.insert_node(NodeState::Indexed, header, "local header").expect("insert");
     assert_eq!(graph.node_at_start(0).expect("lookup").id, id);
 }
 
 #[test]
 fn absolute_jump_rejects_out_of_bounds() {
     let err = checked_absolute_jump(FILE, 100, 90, 20).expect_err("oob");
-    assert!(matches!(
-        err,
-        JumpError::OutOfBounds | JumpError::Range(RangeError::OutOfBounds)
-    ));
+    assert!(matches!(err, JumpError::OutOfBounds | JumpError::Range(RangeError::OutOfBounds)));
 }
 
 #[test]
@@ -35,12 +30,8 @@ fn relative_jump_uses_basis_start() {
 #[test]
 fn walk_with_budget_allows_revisit_cycles_without_infinite_loop() {
     let mut graph = LayoutGraph::new(FILE, 200);
-    let a = graph
-        .insert_node(NodeState::Indexed, ByteRange::new(0, 10).expect("a"), "a")
-        .expect("a");
-    let b = graph
-        .insert_node(NodeState::Indexed, ByteRange::new(20, 10).expect("b"), "b")
-        .expect("b");
+    let a = graph.insert_node(NodeState::Indexed, ByteRange::new(0, 10).expect("a"), "a").expect("a");
+    let b = graph.insert_node(NodeState::Indexed, ByteRange::new(20, 10).expect("b"), "b").expect("b");
     graph.add_edge(ReferenceEdge {
         from: a,
         to: b,

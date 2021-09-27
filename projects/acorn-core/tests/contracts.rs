@@ -1,6 +1,5 @@
 use acorn_core::{
-    Address, AddressSpaceId, Availability, ByteRange, BudgetTracker, NodeState, ParseBudget,
-    Provenance, RangeError, Span,
+    Address, AddressSpaceId, Availability, BudgetTracker, ByteRange, NodeState, ParseBudget, Provenance, RangeError, Span,
 };
 
 #[test]
@@ -13,10 +12,7 @@ fn byte_range_checked_end() {
 
 #[test]
 fn byte_range_overflow_is_reported() {
-    assert_eq!(
-        ByteRange::new(u64::MAX, 1),
-        Err(RangeError::Overflow)
-    );
+    assert_eq!(ByteRange::new(u64::MAX, 1), Err(RangeError::Overflow));
 }
 
 #[test]
@@ -46,10 +42,7 @@ fn node_state_promotion_is_monotonic() {
 
 #[test]
 fn budget_tracker_enforces_read_limit() {
-    let mut tracker = BudgetTracker::new(ParseBudget {
-        max_read_bytes: 16,
-        ..ParseBudget::default()
-    });
+    let mut tracker = BudgetTracker::new(ParseBudget { max_read_bytes: 16, ..ParseBudget::default() });
     assert!(tracker.reserve_read_bytes(8).is_ok());
     assert!(tracker.reserve_read_bytes(8).is_ok());
     assert!(tracker.reserve_read_bytes(1).is_err());

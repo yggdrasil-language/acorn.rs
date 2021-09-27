@@ -12,7 +12,6 @@ keywords = ["binary", "parser", "layout"]
 
 [dependencies]
 diagnostic = { workspace = true, default-features = false, features = ["std", "serde"] }
-thiserror = { workspace = true }
 serde = { workspace = true, optional = true }
 
 [features]

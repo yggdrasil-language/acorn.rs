@@ -1,6 +1,8 @@
-use crate::sink::{ByteSink, WriteError};
-use crate::sink_capabilities::SinkCapabilities;
-use crate::write::WriteOutcome;
+use crate::{
+    sink::{ByteSink, WriteError},
+    sink_capabilities::SinkCapabilities,
+    write::WriteOutcome,
+};
 
 /// In-memory `ByteSink` with seek, append, and patch support.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -12,18 +14,12 @@ pub struct MemorySink {
 impl MemorySink {
     /// Creates an empty sink with no byte budget.
     pub fn new() -> Self {
-        Self {
-            bytes: Vec::new(),
-            budget: None,
-        }
+        Self { bytes: Vec::new(), budget: None }
     }
 
     /// Creates an empty sink with a maximum byte budget.
     pub fn with_budget(budget: u64) -> Self {
-        Self {
-            bytes: Vec::new(),
-            budget: Some(budget),
-        }
+        Self { bytes: Vec::new(), budget: Some(budget) }
     }
 
     /// Returns the written bytes.
@@ -39,10 +35,7 @@ impl MemorySink {
     fn check_budget(&self, end: u64) -> Result<(), WriteError> {
         if let Some(limit) = self.budget {
             if end > limit {
-                return Err(WriteError::BudgetExceeded {
-                    attempted: end,
-                    limit,
-                });
+                return Err(WriteError::BudgetExceeded { attempted: end, limit });
             }
         }
         Ok(())
@@ -77,10 +70,7 @@ impl ByteSink for MemorySink {
         let end = self.bytes.len() as u64 + bytes.len() as u64;
         if let Some(limit) = self.budget {
             if end > limit {
-                return Ok(WriteOutcome::WouldExceedBudget {
-                    attempted: end,
-                    limit,
-                });
+                return Ok(WriteOutcome::WouldExceedBudget { attempted: end, limit });
             }
         }
         self.bytes.extend_from_slice(bytes);

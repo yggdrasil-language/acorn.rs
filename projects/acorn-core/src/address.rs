@@ -1,4 +1,4 @@
-use thiserror::Error;
+use std::fmt;
 
 /// Identifier for an address space within one parse session.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -42,18 +42,27 @@ pub struct ByteRange {
 }
 
 /// Errors produced by checked range arithmetic.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RangeError {
     /// `start + len` overflowed `u64`.
-    #[error("byte range overflow")]
     Overflow,
     /// The range end exceeds the declared space length.
-    #[error("byte range exceeds space length")]
     OutOfBounds,
     /// `len` is zero where a non-empty range is required.
-    #[error("empty byte range")]
     Empty,
 }
+
+impl fmt::Display for RangeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Overflow => write!(f, "byte range overflow"),
+            Self::OutOfBounds => write!(f, "byte range exceeds space length"),
+            Self::Empty => write!(f, "empty byte range"),
+        }
+    }
+}
+
+impl std::error::Error for RangeError {}
 
 impl ByteRange {
     /// Creates a new range after validating `start + len`.
@@ -66,6 +75,14 @@ impl ByteRange {
             return Err(RangeError::Overflow);
         }
         Ok(Self { start, len })
+    }
+
+    /// Creates a range that may be empty (for zero-length ZIP payloads).
+    pub fn new_allowing_empty(start: u64, len: u64) -> Result<Self, RangeError> {
+        if len == 0 {
+            return Ok(Self { start, len: 0 });
+        }
+        Self::new(start, len)
     }
 
     /// Returns the exclusive end offset, if it can be computed.

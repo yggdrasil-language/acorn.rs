@@ -26,10 +26,7 @@ impl Provenance {
 
     /// Extends the chain with another transformation step.
     pub fn push(&mut self, label: impl Into<String>, outer_range: ByteRange) {
-        self.steps.push(ProvenanceStep {
-            label: label.into(),
-            outer_range,
-        });
+        self.steps.push(ProvenanceStep { label: label.into(), outer_range });
     }
 }
 
@@ -48,11 +45,7 @@ pub struct Span {
 impl Span {
     /// Creates a root span in the given space.
     pub fn new(space: AddressSpaceId, range: ByteRange) -> Self {
-        Self {
-            space,
-            range,
-            provenance: Provenance::root(),
-        }
+        Self { space, range, provenance: Provenance::root() }
     }
 
     /// Creates a child span with extended provenance.
@@ -65,10 +58,6 @@ impl Span {
     ) -> Self {
         let mut provenance = parent.clone();
         provenance.push(label, outer_range);
-        Self {
-            space,
-            range,
-            provenance,
-        }
+        Self { space, range, provenance }
     }
 }

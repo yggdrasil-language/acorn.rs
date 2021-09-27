@@ -16,15 +16,11 @@ mod write_plan;
 
 pub use address::{Address, AddressSpaceId, AddressSpaceKind, ByteRange, RangeError};
 pub use budget::{BudgetError, BudgetTracker, ParseBudget};
-pub use layout::{evidence_absolute, LayoutGraph, LayoutNode, LayoutNodeId, ReferenceEdge};
+pub use layout::{LayoutGraph, LayoutNode, LayoutNodeId, ReferenceEdge, evidence_absolute};
 pub use partial::{Availability, NeedRange};
-pub use reference::{
-    checked_absolute_jump, checked_relative_jump, JumpError, ReferenceEvidence, ReferenceKind,
-    VisitKey,
-};
+pub use reference::{JumpError, ReferenceEvidence, ReferenceKind, VisitKey, checked_absolute_jump, checked_relative_jump};
 pub use span::{Provenance, ProvenanceStep, Span};
 pub use state::NodeState;
 pub use write_plan::{
-    Endian, LayoutPlan, PatchPoint, PlanError, PlanSlot, PlanSlotId, Relocation, RelocationId,
-    RelocationTarget,
+    Endian, LayoutPlan, PatchPoint, PlanError, PlanSlot, PlanSlotId, Relocation, RelocationId, RelocationTarget,
 };

@@ -1,19 +1,12 @@
 use acorn_core::diagnostic::{
-    actions, error, warning, BudgetUsage, DiagnosticCode, DiagnosticSeverity, DiagnosticSet,
-    MessageArg,
+    BudgetUsage, DiagnosticCode, DiagnosticSet, DiagnosticSeverity, MessageArg, actions, error, warning,
 };
 
 #[test]
 fn diagnostic_codes_use_dotted_wire_identifiers() {
     assert_eq!(DiagnosticCode::NeedRange.as_str(), "acorn.layout.need-range");
-    assert_eq!(
-        DiagnosticCode::OffsetOverflow.as_str(),
-        "acorn.layout.offset-overflow"
-    );
-    assert_eq!(
-        DiagnosticCode::MagicMismatch.as_str(),
-        "acorn.probe.magic-mismatch"
-    );
+    assert_eq!(DiagnosticCode::OffsetOverflow.as_str(), "acorn.layout.offset-overflow");
+    assert_eq!(DiagnosticCode::MagicMismatch.as_str(), "acorn.probe.magic-mismatch");
 }
 
 #[test]

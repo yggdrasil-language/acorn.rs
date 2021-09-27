@@ -1,7 +1,9 @@
-use crate::capabilities::SourceCapabilities;
-use crate::identity::SourceIdentity;
-use crate::read::{ReadOutcome, ReadResult};
-use crate::source::ByteSource;
+use crate::{
+    capabilities::SourceCapabilities,
+    identity::SourceIdentity,
+    read::{ReadOutcome, ReadResult},
+    source::ByteSource,
+};
 
 /// In-memory `ByteSource` backed by a byte slice.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -13,10 +15,7 @@ pub struct MemorySource {
 impl MemorySource {
     /// Creates a source from owned bytes.
     pub fn from_bytes(label: impl Into<String>, bytes: Vec<u8>) -> Self {
-        Self {
-            bytes,
-            identity: SourceIdentity::new(label),
-        }
+        Self { bytes, identity: SourceIdentity::new(label) }
     }
 
     /// Creates a source from a static slice.
@@ -40,10 +39,9 @@ impl ByteSource for MemorySource {
         destination[..to_copy].copy_from_slice(&self.bytes[offset..offset + to_copy]);
         if to_copy == destination.len() {
             Ok(ReadOutcome::Complete)
-        } else {
-            Ok(ReadOutcome::Partial {
-                bytes_read: to_copy as u64,
-            })
+        }
+        else {
+            Ok(ReadOutcome::Partial { bytes_read: to_copy as u64 })
         }
     }
 

@@ -1,8 +1,10 @@
 use std::collections::BTreeMap;
 
-use crate::address::{AddressSpaceId, ByteRange, RangeError};
-use crate::reference::{JumpError, ReferenceEvidence, ReferenceKind, VisitKey};
-use crate::state::NodeState;
+use crate::{
+    address::{AddressSpaceId, ByteRange, RangeError},
+    reference::{JumpError, ReferenceEvidence, ReferenceKind, VisitKey},
+    state::NodeState,
+};
 
 /// Stable identifier for a layout node within one graph.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -52,13 +54,7 @@ pub struct ReferenceEdge {
 impl LayoutGraph {
     /// Creates an empty graph for one address space.
     pub fn new(space: AddressSpaceId, space_len: u64) -> Self {
-        Self {
-            space,
-            space_len,
-            nodes: Vec::new(),
-            edges: Vec::new(),
-            by_start: BTreeMap::new(),
-        }
+        Self { space, space_len, nodes: Vec::new(), edges: Vec::new(), by_start: BTreeMap::new() }
     }
 
     /// Inserts a node and indexes it by range start offset.
@@ -71,13 +67,7 @@ impl LayoutGraph {
         range.fits_in(self.space_len)?;
         let id = LayoutNodeId(self.nodes.len() as u64 + 1);
         self.by_start.insert(range.start, id);
-        self.nodes.push(LayoutNode {
-            id,
-            state,
-            range,
-            space: self.space,
-            label: label.into(),
-        });
+        self.nodes.push(LayoutNode { id, state, range, space: self.space, label: label.into() });
         Ok(id)
     }
 
@@ -109,9 +99,7 @@ impl LayoutGraph {
 
     /// Returns a node starting at `offset`, if indexed.
     pub fn node_at_start(&self, offset: u64) -> Option<&LayoutNode> {
-        self.by_start
-            .get(&offset)
-            .and_then(|id| self.node(*id))
+        self.by_start.get(&offset).and_then(|id| self.node(*id))
     }
 
     /// All recorded reference edges.
@@ -125,12 +113,7 @@ impl LayoutGraph {
     }
 
     /// Bounded traversal helper that stops on revisits.
-    pub fn walk_with_budget<F>(
-        &self,
-        start: VisitKey,
-        max_hops: u32,
-        mut visit: F,
-    ) -> Result<(), JumpError>
+    pub fn walk_with_budget<F>(&self, start: VisitKey, max_hops: u32, mut visit: F) -> Result<(), JumpError>
     where
         F: FnMut(VisitKey, &LayoutNode) -> Result<(), JumpError>,
     {
@@ -144,16 +127,11 @@ impl LayoutGraph {
                 continue;
             }
             seen.insert(key, depth);
-            let node = self
-                .node_at_start(key.offset)
-                .ok_or(JumpError::OutOfBounds)?;
+            let node = self.node_at_start(key.offset).ok_or(JumpError::OutOfBounds)?;
             visit(key, node)?;
             for edge in self.edges.iter().filter(|edge| edge.from == node.id) {
                 let target_start = edge.evidence.target.start;
-                queue.push((
-                    VisitKey::new(edge.evidence.space, target_start),
-                    depth + 1,
-                ));
+                queue.push((VisitKey::new(edge.evidence.space, target_start), depth + 1));
             }
         }
         Ok(())
@@ -161,16 +139,6 @@ impl LayoutGraph {
 }
 
 /// Convenience builder for reference evidence.
-pub fn evidence_absolute(
-    space: AddressSpaceId,
-    source_field: impl Into<String>,
-    target: ByteRange,
-) -> ReferenceEvidence {
-    ReferenceEvidence {
-        kind: ReferenceKind::AbsoluteOffset,
-        source_field: source_field.into(),
-        basis: None,
-        target,
-        space,
-    }
+pub fn evidence_absolute(space: AddressSpaceId, source_field: impl Into<String>, target: ByteRange) -> ReferenceEvidence {
+    ReferenceEvidence { kind: ReferenceKind::AbsoluteOffset, source_field: source_field.into(), basis: None, target, space }
 }

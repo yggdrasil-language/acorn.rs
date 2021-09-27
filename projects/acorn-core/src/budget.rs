@@ -1,5 +1,6 @@
+use std::fmt;
+
 use crate::diagnostic::BudgetUsage;
-use thiserror::Error;
 
 /// Composable limits for parsing work.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -42,36 +43,45 @@ impl Default for ParseBudget {
 }
 
 /// Errors raised when a budget would be exceeded.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BudgetError {
     /// Raw read budget exhausted.
-    #[error("read byte budget exhausted")]
     ReadBytes,
     /// Decoded materialization budget exhausted.
-    #[error("decoded byte budget exhausted")]
     DecodedBytes,
     /// Envelope depth budget exhausted.
-    #[error("envelope depth budget exhausted")]
     EnvelopeDepth,
     /// Container member budget exhausted.
-    #[error("container member budget exhausted")]
     ContainerMembers,
     /// Layout node budget exhausted.
-    #[error("layout node budget exhausted")]
     Nodes,
     /// Reference budget exhausted.
-    #[error("reference budget exhausted")]
     References,
     /// Pointer hop budget exhausted.
-    #[error("pointer hop budget exhausted")]
     PointerHops,
     /// Scan budget exhausted.
-    #[error("scan byte budget exhausted")]
     ScanBytes,
     /// Cache budget exhausted.
-    #[error("cache byte budget exhausted")]
     CacheBytes,
 }
+
+impl fmt::Display for BudgetError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ReadBytes => write!(f, "read byte budget exhausted"),
+            Self::DecodedBytes => write!(f, "decoded byte budget exhausted"),
+            Self::EnvelopeDepth => write!(f, "envelope depth budget exhausted"),
+            Self::ContainerMembers => write!(f, "container member budget exhausted"),
+            Self::Nodes => write!(f, "layout node budget exhausted"),
+            Self::References => write!(f, "reference budget exhausted"),
+            Self::PointerHops => write!(f, "pointer hop budget exhausted"),
+            Self::ScanBytes => write!(f, "scan byte budget exhausted"),
+            Self::CacheBytes => write!(f, "cache byte budget exhausted"),
+        }
+    }
+}
+
+impl std::error::Error for BudgetError {}
 
 /// Tracks budget consumption with checked reservation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -83,10 +93,7 @@ pub struct BudgetTracker {
 impl BudgetTracker {
     /// Creates a tracker for the given limits.
     pub fn new(limits: ParseBudget) -> Self {
-        Self {
-            limits,
-            usage: BudgetUsage::default(),
-        }
+        Self { limits, usage: BudgetUsage::default() }
     }
 
     /// Returns the current limits.
@@ -101,11 +108,7 @@ impl BudgetTracker {
 
     /// Reserves additional raw read bytes.
     pub fn reserve_read_bytes(&mut self, bytes: u64) -> Result<(), BudgetError> {
-        let next = self
-            .usage
-            .read_bytes
-            .checked_add(bytes)
-            .ok_or(BudgetError::ReadBytes)?;
+        let next = self.usage.read_bytes.checked_add(bytes).ok_or(BudgetError::ReadBytes)?;
         if next > self.limits.max_read_bytes {
             return Err(BudgetError::ReadBytes);
         }
@@ -115,11 +118,7 @@ impl BudgetTracker {
 
     /// Reserves additional decoded bytes.
     pub fn reserve_decoded_bytes(&mut self, bytes: u64) -> Result<(), BudgetError> {
-        let next = self
-            .usage
-            .decoded_bytes
-            .checked_add(bytes)
-            .ok_or(BudgetError::DecodedBytes)?;
+        let next = self.usage.decoded_bytes.checked_add(bytes).ok_or(BudgetError::DecodedBytes)?;
         if next > self.limits.max_decoded_bytes {
             return Err(BudgetError::DecodedBytes);
         }
@@ -129,11 +128,7 @@ impl BudgetTracker {
 
     /// Reserves one layout node.
     pub fn reserve_node(&mut self) -> Result<(), BudgetError> {
-        let next = self
-            .usage
-            .nodes
-            .checked_add(1)
-            .ok_or(BudgetError::Nodes)?;
+        let next = self.usage.nodes.checked_add(1).ok_or(BudgetError::Nodes)?;
         if next > self.limits.max_nodes {
             return Err(BudgetError::Nodes);
         }
@@ -143,11 +138,7 @@ impl BudgetTracker {
 
     /// Reserves one pointer hop.
     pub fn reserve_pointer_hop(&mut self) -> Result<(), BudgetError> {
-        let next = self
-            .usage
-            .pointer_hops
-            .checked_add(1)
-            .ok_or(BudgetError::PointerHops)?;
+        let next = self.usage.pointer_hops.checked_add(1).ok_or(BudgetError::PointerHops)?;
         if next > self.limits.max_pointer_hops {
             return Err(BudgetError::PointerHops);
         }

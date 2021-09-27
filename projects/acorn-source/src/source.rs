@@ -1,6 +1,8 @@
-use crate::capabilities::SourceCapabilities;
-use crate::identity::SourceIdentity;
-use crate::read::{ReadOutcome, ReadResult, SourceRange};
+use crate::{
+    capabilities::SourceCapabilities,
+    identity::SourceIdentity,
+    read::{ReadOutcome, ReadResult, SourceRange},
+};
 
 /// Random-access byte source contract.
 pub trait ByteSource {
@@ -20,15 +22,10 @@ pub trait ByteSource {
             ReadOutcome::Complete => Ok(buffer),
             ReadOutcome::Partial { bytes_read } => {
                 buffer.truncate(bytes_read as usize);
-                Err(ReadError::ShortRead {
-                    expected: range.len,
-                    actual: bytes_read,
-                })
+                Err(ReadError::ShortRead { expected: range.len, actual: bytes_read })
             }
             ReadOutcome::Eof => Err(ReadError::Eof),
-            ReadOutcome::Unavailable { range, reason } => {
-                Err(ReadError::Unavailable { range, reason })
-            }
+            ReadOutcome::Unavailable { range, reason } => Err(ReadError::Unavailable { range, reason }),
         }
     }
 
@@ -40,13 +37,11 @@ pub trait ByteSource {
 }
 
 /// Errors from `read_range` convenience reads.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ReadError {
     /// Underlying I/O failure.
-    #[error("io error: {0}")]
     Io(String),
     /// Read ended before the requested number of bytes.
-    #[error("short read: expected {expected} bytes, got {actual}")]
     ShortRead {
         /// Requested byte count.
         expected: u64,
@@ -54,10 +49,8 @@ pub enum ReadError {
         actual: u64,
     },
     /// Read started at or past EOF.
-    #[error("unexpected eof")]
     Eof,
     /// Requested interval is not currently available.
-    #[error("unavailable range: {reason}")]
     Unavailable {
         /// Missing interval.
         range: SourceRange,
@@ -65,6 +58,21 @@ pub enum ReadError {
         reason: String,
     },
 }
+
+impl std::fmt::Display for ReadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Io(message) => write!(f, "io error: {message}"),
+            Self::ShortRead { expected, actual } => {
+                write!(f, "short read: expected {expected} bytes, got {actual}")
+            }
+            Self::Eof => write!(f, "unexpected eof"),
+            Self::Unavailable { reason, .. } => write!(f, "unavailable range: {reason}"),
+        }
+    }
+}
+
+impl std::error::Error for ReadError {}
 
 impl From<std::io::Error> for ReadError {
     fn from(error: std::io::Error) -> Self {

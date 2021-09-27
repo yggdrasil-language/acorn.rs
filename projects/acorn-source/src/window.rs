@@ -1,7 +1,9 @@
-use crate::identity::SourceIdentity;
-use crate::read::{ReadOutcome, ReadResult, SourceRange};
-use crate::source::ByteSource;
-use crate::SourceCapabilities;
+use crate::{
+    SourceCapabilities,
+    identity::SourceIdentity,
+    read::{ReadOutcome, ReadResult, SourceRange},
+    source::ByteSource,
+};
 
 /// A bounded view over another `ByteSource`.
 #[derive(Debug, Clone)]
@@ -16,12 +18,7 @@ impl<S: ByteSource> ByteWindow<S> {
     /// Creates a window over `source`.
     pub fn new(source: S, base: u64, range: SourceRange) -> Result<Self, crate::RangeError> {
         range.end()?;
-        Ok(Self {
-            source,
-            base,
-            range,
-            complete: false,
-        })
+        Ok(Self { source, base, range, complete: false })
     }
 
     /// Marks the window as fully materialized.
@@ -58,10 +55,9 @@ impl<S: ByteSource> ByteSource for ByteWindow<S> {
                 destination[..bounded].copy_from_slice(&scratch);
                 if bounded == destination.len() {
                     Ok(ReadOutcome::Complete)
-                } else {
-                    Ok(ReadOutcome::Partial {
-                        bytes_read: bounded as u64,
-                    })
+                }
+                else {
+                    Ok(ReadOutcome::Partial { bytes_read: bounded as u64 })
                 }
             }
             ReadOutcome::Partial { bytes_read } => {
@@ -69,10 +65,7 @@ impl<S: ByteSource> ByteSource for ByteWindow<S> {
                 Ok(ReadOutcome::Partial { bytes_read })
             }
             ReadOutcome::Eof => Ok(ReadOutcome::Eof),
-            ReadOutcome::Unavailable { range, reason } => Ok(ReadOutcome::Unavailable {
-                range,
-                reason,
-            }),
+            ReadOutcome::Unavailable { range, reason } => Ok(ReadOutcome::Unavailable { range, reason }),
         }
     }
 

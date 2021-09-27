@@ -30,22 +30,10 @@ impl NodeState {
             return true;
         }
         match self {
-            Discovered => matches!(
-                next,
-                Indexed | Decoded | Partial | Truncated | Unsupported | Invalid
-            ),
-            Indexed => matches!(
-                next,
-                Decoded | StructurallyValid | Partial | Truncated | Unsupported | Invalid
-            ),
-            Decoded => matches!(
-                next,
-                StructurallyValid | SemanticallyValid | Partial | Truncated | Unsupported | Invalid
-            ),
-            StructurallyValid => matches!(
-                next,
-                SemanticallyValid | Partial | Truncated | Unsupported | Invalid
-            ),
+            Discovered => matches!(next, Indexed | Decoded | Partial | Truncated | Unsupported | Invalid),
+            Indexed => matches!(next, Decoded | StructurallyValid | Partial | Truncated | Unsupported | Invalid),
+            Decoded => matches!(next, StructurallyValid | SemanticallyValid | Partial | Truncated | Unsupported | Invalid),
+            StructurallyValid => matches!(next, SemanticallyValid | Partial | Truncated | Unsupported | Invalid),
             SemanticallyValid => matches!(next, Partial),
             Partial | Truncated | Unsupported | Invalid => false,
         }

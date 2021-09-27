@@ -4,9 +4,8 @@
 //! collection use the shared `diagnostic` crate.
 
 pub use diagnostic::{
-    Diagnostic, DiagnosticAction, DiagnosticCode as WireDiagnosticCode, DiagnosticLabel,
-    DiagnosticLocation, DiagnosticOrigin, DiagnosticSeverity, DiagnosticSet, DiagnosticSink,
-    Message, MessageArg,
+    Diagnostic, DiagnosticAction, DiagnosticCode as WireDiagnosticCode, DiagnosticLabel, DiagnosticLocation, DiagnosticOrigin,
+    DiagnosticSet, DiagnosticSeverity, DiagnosticSink, Message, MessageArg,
 };
 
 /// Acorn domain diagnostic code (maps to dotted `acorn.*` wire identifiers).

@@ -10,10 +10,7 @@ pub struct SourceIdentity {
 impl SourceIdentity {
     /// Creates a new identity.
     pub fn new(label: impl Into<String>) -> Self {
-        Self {
-            label: label.into(),
-            version: None,
-        }
+        Self { label: label.into(), version: None }
     }
 
     /// Attaches a version token.

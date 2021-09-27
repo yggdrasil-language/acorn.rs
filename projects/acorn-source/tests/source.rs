@@ -1,16 +1,11 @@
-use acorn_source::{
-    ByteSource, MemorySource, RangeMapSource, ReadError, ReadOutcome, SourceRange,
-};
+use acorn_source::{ByteSource, MemorySource, RangeMapSource, ReadError, ReadOutcome, SourceRange};
 
 #[test]
 fn memory_source_reads_without_padding() {
     let source = MemorySource::from_static("sample", b"ABCDE");
     let mut buffer = [0u8; 3];
     let outcome = source.read_at(3, &mut buffer).expect("read succeeds");
-    assert_eq!(
-        outcome,
-        ReadOutcome::Partial { bytes_read: 2 }
-    );
+    assert_eq!(outcome, ReadOutcome::Partial { bytes_read: 2 });
     assert_eq!(&buffer[..2], b"DE");
     assert_eq!(buffer[2], 0);
 }
@@ -43,14 +38,7 @@ fn read_range_surfaces_short_read() {
 #[test]
 fn byte_window_maps_outer_offsets() {
     let source = MemorySource::from_static("sample", b"0123456789");
-    let window = acorn_source::ByteWindow::new(
-        source,
-        0,
-        SourceRange::new(2, 4).expect("range"),
-    )
-    .expect("window");
-    let bytes = window
-        .read_range(SourceRange::new(0, 4).expect("inner"))
-        .expect("read");
+    let window = acorn_source::ByteWindow::new(source, 0, SourceRange::new(2, 4).expect("range")).expect("window");
+    let bytes = window.read_range(SourceRange::new(0, 4).expect("inner")).expect("read");
     assert_eq!(bytes, b"2345");
 }

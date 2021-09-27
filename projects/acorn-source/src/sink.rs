@@ -1,5 +1,4 @@
-use crate::sink_capabilities::SinkCapabilities;
-use crate::write::WriteOutcome;
+use crate::{sink_capabilities::SinkCapabilities, write::WriteOutcome};
 
 /// Bounded byte sink contract, symmetric to `ByteSource` but for generation.
 pub trait ByteSink {
@@ -15,9 +14,7 @@ pub trait ByteSink {
     /// Writes bytes at `offset`, growing the sink when supported.
     fn write_at(&mut self, offset: u64, bytes: &[u8]) -> Result<WriteOutcome, WriteError> {
         if !self.capabilities().seek_write {
-            return Err(WriteError::Unsupported {
-                operation: "write_at",
-            });
+            return Err(WriteError::Unsupported { operation: "write_at" });
         }
         self.write_at_impl(offset, bytes)
     }
@@ -25,9 +22,7 @@ pub trait ByteSink {
     /// Patches a little-endian `u32` at `offset`.
     fn patch_u32_le(&mut self, offset: u64, value: u32) -> Result<(), WriteError> {
         if !self.capabilities().patch_in_place {
-            return Err(WriteError::Unsupported {
-                operation: "patch_u32_le",
-            });
+            return Err(WriteError::Unsupported { operation: "patch_u32_le" });
         }
         self.write_at(offset, &value.to_le_bytes())?;
         Ok(())
@@ -38,19 +33,16 @@ pub trait ByteSink {
 }
 
 /// Errors from sink writes.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WriteError {
     /// Underlying I/O failure.
-    #[error("io error: {0}")]
     Io(String),
     /// The sink does not support the requested operation.
-    #[error("unsupported sink operation: {operation}")]
     Unsupported {
         /// Operation name.
         operation: &'static str,
     },
     /// Offset is out of range for a non-growable sink.
-    #[error("write offset {offset} is out of range for length {len}")]
     OutOfRange {
         /// Requested offset.
         offset: u64,
@@ -58,7 +50,6 @@ pub enum WriteError {
         len: u64,
     },
     /// Write would exceed the configured byte budget.
-    #[error("write would exceed byte budget: attempted {attempted}, limit {limit}")]
     BudgetExceeded {
         /// Bytes that would be written.
         attempted: u64,
@@ -66,6 +57,25 @@ pub enum WriteError {
         limit: u64,
     },
 }
+
+impl std::fmt::Display for WriteError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Io(message) => write!(f, "io error: {message}"),
+            Self::Unsupported { operation } => {
+                write!(f, "unsupported sink operation: {operation}")
+            }
+            Self::OutOfRange { offset, len } => {
+                write!(f, "write offset {offset} is out of range for length {len}")
+            }
+            Self::BudgetExceeded { attempted, limit } => {
+                write!(f, "write would exceed byte budget: attempted {attempted}, limit {limit}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for WriteError {}
 
 impl From<std::io::Error> for WriteError {
     fn from(error: std::io::Error) -> Self {
