@@ -66,22 +66,12 @@ fn parse_eocd(bytes: &[u8], offset: usize) -> Option<EndOfCentralDirectory> {
         if needs_zip64_eocd(entry_count16, cd_size32, cd_offset32) {
             let (count, size, cd_offset) = resolve_zip64_eocd(bytes, offset)?;
             (count, size, cd_offset, true)
-        } else {
-            (
-                entry_count16 as u64,
-                cd_size32 as u64,
-                cd_offset32 as u64,
-                false,
-            )
+        }
+        else {
+            (entry_count16 as u64, cd_size32 as u64, cd_offset32 as u64, false)
         };
 
-    if !eocd_points_at_central_directory(
-        bytes,
-        offset,
-        entry_count,
-        central_directory_offset,
-        central_directory_size,
-    ) {
+    if !eocd_points_at_central_directory(bytes, offset, entry_count, central_directory_offset, central_directory_size) {
         return None;
     }
 
@@ -106,9 +96,7 @@ fn eocd_points_at_central_directory(
         return central_directory_size == 0;
     }
     let start = central_directory_offset as usize;
-    let end = start
-        .checked_add(central_directory_size as usize)
-        .unwrap_or(bytes.len() + 1);
+    let end = start.checked_add(central_directory_size as usize).unwrap_or(bytes.len() + 1);
     if end > bytes.len() || end > eocd_offset {
         return false;
     }
@@ -118,8 +106,7 @@ fn eocd_points_at_central_directory(
 /// Byte range covering the central directory.
 impl EndOfCentralDirectory {
     pub fn central_directory_range(&self) -> Option<ByteRange> {
-        ByteRange::new(self.central_directory_offset, self.central_directory_size)
-        .ok()
+        ByteRange::new(self.central_directory_offset, self.central_directory_size).ok()
     }
 }
 

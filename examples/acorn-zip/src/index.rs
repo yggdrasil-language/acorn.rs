@@ -1,41 +1,54 @@
-use acorn_core::{
-    evidence_absolute, AddressSpaceId, ByteRange, LayoutGraph, LayoutNodeId, NodeState, ReferenceEdge,
-};
+use acorn_core::{AddressSpaceId, ByteRange, LayoutGraph, LayoutNodeId, NodeState, ReferenceEdge, evidence_absolute};
 use acorn_probe::probe_memory;
 use acorn_source::{ByteSource, MemorySource, ReadOutcome};
 
-use crate::eocd::{find_eocd, read_u16_le, read_u32_le, EndOfCentralDirectory};
-use crate::entry::ZipMember;
-use crate::zip64::{needs_zip64_size, parse_zip64_extra};
+use crate::{
+    entry::ZipMember,
+    eocd::{EndOfCentralDirectory, find_eocd, read_u16_le, read_u32_le},
+    zip64::{needs_zip64_size, parse_zip64_extra},
+};
 
 const CD_SIGNATURE: u32 = 0x0201_4b50;
 const LOCAL_SIGNATURE: u32 = 0x0403_4b50;
 const CD_SIGNATURE_LEN: usize = 4;
-const CD_FIXED: usize = 46;
-const CD_ENTRY_PREFIX: usize = CD_SIGNATURE_LEN + CD_FIXED;
+/// Fixed fields after the 4-byte signature (APPNOTE central directory = 46 total).
+const CD_FIXED_AFTER_SIG: usize = 42;
+/// Central directory fixed prefix including signature.
+const CD_ENTRY_PREFIX: usize = CD_SIGNATURE_LEN + CD_FIXED_AFTER_SIG;
 
 /// Errors while indexing a ZIP archive.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ZipIndexError {
     /// Input is not recognized as a ZIP container.
-    #[error("zip signature not found")]
     NotZip,
     /// End of central directory is missing or invalid.
-    #[error("missing or invalid end of central directory")]
     MissingEocd,
     /// Central directory range exceeds the source length.
-    #[error("central directory out of bounds")]
     CentralDirectoryOutOfBounds,
     /// A central directory entry is truncated or malformed.
-    #[error("malformed central directory entry at offset {offset}")]
     MalformedEntry {
         /// Entry offset in the archive.
         offset: u64,
     },
     /// Underlying layout graph rejected a range.
-    #[error("layout error: {0}")]
     Layout(String),
 }
+
+impl std::fmt::Display for ZipIndexError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NotZip => write!(f, "zip signature not found"),
+            Self::MissingEocd => write!(f, "missing or invalid end of central directory"),
+            Self::CentralDirectoryOutOfBounds => write!(f, "central directory out of bounds"),
+            Self::MalformedEntry { offset } => {
+                write!(f, "malformed central directory entry at offset {offset}")
+            }
+            Self::Layout(message) => write!(f, "layout error: {message}"),
+        }
+    }
+}
+
+impl std::error::Error for ZipIndexError {}
 
 /// Indexed ZIP archive with layout graph nodes.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -83,12 +96,8 @@ fn index_bytes(bytes: Vec<u8>) -> Result<ZipArchiveIndex, ZipIndexError> {
     let file_len = bytes.len() as u64;
     let mut layout = LayoutGraph::new(space, file_len);
 
-    let cd_range = eocd
-        .central_directory_range()
-        .ok_or(ZipIndexError::MissingEocd)?;
-    cd_range
-        .fits_in(file_len)
-        .map_err(|error| ZipIndexError::Layout(error.to_string()))?;
+    let cd_range = eocd.central_directory_range().ok_or(ZipIndexError::MissingEocd)?;
+    cd_range.fits_in(file_len).map_err(|error| ZipIndexError::Layout(error.to_string()))?;
 
     let central_directory_node = layout
         .insert_node(NodeState::Indexed, cd_range, "ZIP central directory")
@@ -103,13 +112,7 @@ fn index_bytes(bytes: Vec<u8>) -> Result<ZipArchiveIndex, ZipIndexError> {
         "ZIP end of central directory",
     );
 
-    Ok(ZipArchiveIndex {
-        space,
-        eocd,
-        members,
-        layout,
-        central_directory_node,
-    })
+    Ok(ZipArchiveIndex { space, eocd, members, layout, central_directory_node })
 }
 
 fn eocd_record_len(comment_length: u16) -> u64 {
@@ -123,9 +126,7 @@ fn parse_central_directory(
     space: AddressSpaceId,
 ) -> Result<Vec<ZipMember>, ZipIndexError> {
     let mut offset = eocd.central_directory_offset as usize;
-    let end = offset
-        .checked_add(eocd.central_directory_size as usize)
-        .ok_or(ZipIndexError::CentralDirectoryOutOfBounds)?;
+    let end = offset.checked_add(eocd.central_directory_size as usize).ok_or(ZipIndexError::CentralDirectoryOutOfBounds)?;
     if end > bytes.len() {
         return Err(ZipIndexError::CentralDirectoryOutOfBounds);
     }
@@ -133,9 +134,7 @@ fn parse_central_directory(
     let mut members = Vec::new();
     for _ in 0..eocd.entry_count {
         if read_u32_le(bytes, offset) != Some(CD_SIGNATURE) {
-            return Err(ZipIndexError::MalformedEntry {
-                offset: offset as u64,
-            });
+            return Err(ZipIndexError::MalformedEntry { offset: offset as u64 });
         }
         let version_needed = read_u16_le(bytes, offset + 6).unwrap_or(0);
         let general_purpose_bit_flag = read_u16_le(bytes, offset + 8).unwrap_or(0);
@@ -155,9 +154,7 @@ fn parse_central_directory(
         let name_start = offset + CD_ENTRY_PREFIX;
         let name_end = name_start + name_length;
         if name_end > end {
-            return Err(ZipIndexError::MalformedEntry {
-                offset: offset as u64,
-            });
+            return Err(ZipIndexError::MalformedEntry { offset: offset as u64 });
         }
         let path = String::from_utf8_lossy(&bytes[name_start..name_end]).into_owned();
 
@@ -174,10 +171,9 @@ fn parse_central_directory(
                 compressed32,
                 local_offset32,
             )
-            .ok_or(ZipIndexError::MalformedEntry {
-                offset: offset as u64,
-            })?
-        } else {
+            .ok_or(ZipIndexError::MalformedEntry { offset: offset as u64 })?
+        }
+        else {
             crate::zip64::Zip64Fields {
                 uncompressed_size: uncompressed32 as u64,
                 compressed_size: compressed32 as u64,
@@ -186,21 +182,14 @@ fn parse_central_directory(
         };
 
         let entry_len = CD_ENTRY_PREFIX + name_length + extra_length + comment_length;
-        let entry_range = ByteRange::new(offset as u64, entry_len as u64).map_err(|_| {
-            ZipIndexError::MalformedEntry {
-                offset: offset as u64,
-            }
-        })?;
+        let entry_range = ByteRange::new(offset as u64, entry_len as u64)
+            .map_err(|_| ZipIndexError::MalformedEntry { offset: offset as u64 })?;
 
         let member_node = layout
             .insert_node(NodeState::Indexed, entry_range, format!("ZIP member {}", path))
             .map_err(|error| ZipIndexError::Layout(error.to_string()))?;
 
-        let (data_range, payload_range) = member_payload_range(
-            bytes,
-            zip64.local_header_offset,
-            zip64.compressed_size,
-        )?;
+        let (data_range, payload_range) = member_payload_range(bytes, zip64.local_header_offset, zip64.compressed_size)?;
 
         layout.add_edge(ReferenceEdge {
             from: member_node,
@@ -233,39 +222,24 @@ fn member_payload_range(
 ) -> Result<(ByteRange, ByteRange), ZipIndexError> {
     let offset = local_header_offset as usize;
     if read_u32_le(bytes, offset) != Some(LOCAL_SIGNATURE) {
-        return Err(ZipIndexError::MalformedEntry {
-            offset: local_header_offset,
-        });
+        return Err(ZipIndexError::MalformedEntry { offset: local_header_offset });
     }
     let name_length = read_u16_le(bytes, offset + 26).unwrap_or(0) as usize;
     let extra_length = read_u16_le(bytes, offset + 28).unwrap_or(0) as usize;
     let header_len = 30 + name_length + extra_length;
-    let payload_start = offset
-        .checked_add(header_len)
-        .ok_or(ZipIndexError::MalformedEntry {
-            offset: local_header_offset,
-        })?;
+    let payload_start = offset.checked_add(header_len).ok_or(ZipIndexError::MalformedEntry { offset: local_header_offset })?;
     let payload_end = payload_start
         .checked_add(compressed_size as usize)
-        .ok_or(ZipIndexError::MalformedEntry {
-            offset: local_header_offset,
-        })?;
+        .ok_or(ZipIndexError::MalformedEntry { offset: local_header_offset })?;
     if payload_end > bytes.len() {
-        return Err(ZipIndexError::MalformedEntry {
-            offset: local_header_offset,
-        });
+        return Err(ZipIndexError::MalformedEntry { offset: local_header_offset });
     }
     let total_len = header_len as u64 + compressed_size;
-    let data_range = ByteRange::new(local_header_offset, total_len).map_err(|_| {
-        ZipIndexError::MalformedEntry {
-            offset: local_header_offset,
-        }
-    })?;
-    let payload_range = ByteRange::new(payload_start as u64, compressed_size).map_err(|_| {
-        ZipIndexError::MalformedEntry {
-            offset: local_header_offset,
-        }
-    })?;
+    let data_range = ByteRange::new(local_header_offset, total_len)
+        .map_err(|_| ZipIndexError::MalformedEntry { offset: local_header_offset })?;
+    // Empty stored files and directory entries have a zero-length payload.
+    let payload_range = ByteRange::new_allowing_empty(payload_start as u64, compressed_size)
+        .map_err(|_| ZipIndexError::MalformedEntry { offset: local_header_offset })?;
     Ok((data_range, payload_range))
 }
 

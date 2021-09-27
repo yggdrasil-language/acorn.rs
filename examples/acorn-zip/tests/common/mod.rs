@@ -10,7 +10,8 @@ pub fn minimal_single_file_zip() -> Vec<u8> {
 
     let local_size = archive.len();
     archive.extend_from_slice(b"PK\x01\x02");
-    let mut cd_fixed = [0u8; 46];
+    // 42 bytes after signature (APPNOTE total fixed = 46).
+    let mut cd_fixed = [0u8; 42];
     cd_fixed[0..2].copy_from_slice(&[0x14, 0x00]);
     cd_fixed[2..4].copy_from_slice(&[0x14, 0x00]);
     cd_fixed[12..16].copy_from_slice(&[0x83, 0x16, 0xdc, 0x8c]);

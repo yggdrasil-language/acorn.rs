@@ -2,7 +2,7 @@
 mod common;
 
 use acorn_source::MemorySource;
-use acorn_zip::{index_zip_bytes, read_stored_payload, ZipViewError};
+use acorn_zip::{ZipViewError, index_zip_bytes, read_stored_payload};
 
 use common::minimal_single_file_zip;
 

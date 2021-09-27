@@ -67,10 +67,7 @@ pub fn parse_zip64_extra(
 }
 
 /// Locates 64-bit EOCD fields when the classic EOCD uses sentinel values.
-pub fn resolve_zip64_eocd(
-    bytes: &[u8],
-    eocd_offset: usize,
-) -> Option<(u64, u64, u64)> {
+pub fn resolve_zip64_eocd(bytes: &[u8], eocd_offset: usize) -> Option<(u64, u64, u64)> {
     if eocd_offset < 20 {
         return None;
     }
@@ -89,41 +86,9 @@ pub fn resolve_zip64_eocd(
 }
 
 pub(crate) fn needs_zip64_eocd(entry_count: u16, cd_size: u32, cd_offset: u32) -> bool {
-    entry_count == u16::MAX
-        || cd_size == u32::MAX
-        || cd_offset == u32::MAX
+    entry_count == u16::MAX || cd_size == u32::MAX || cd_offset == u32::MAX
 }
 
 pub(crate) fn needs_zip64_size(value: u32) -> bool {
     value == u32::MAX
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn parses_zip64_extra_uncompressed_size() {
-        let uncompressed = 0x1_0000_0200u64;
-        let mut extra = Vec::new();
-        extra.extend_from_slice(&ZIP64_EXTRA_ID.to_le_bytes());
-        extra.extend_from_slice(&8u16.to_le_bytes());
-        extra.extend_from_slice(&uncompressed.to_le_bytes());
-
-        let fields = parse_zip64_extra(
-            &extra,
-            0,
-            extra.len(),
-            true,
-            false,
-            false,
-            0,
-            512,
-            0,
-        )
-            .expect("zip64 extra");
-        assert_eq!(fields.uncompressed_size, uncompressed);
-        assert_eq!(fields.compressed_size, 512);
-        assert_eq!(fields.local_header_offset, 0);
-    }
 }

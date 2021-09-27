@@ -4,8 +4,94 @@ use acorn_core::ParseBudget;
 use acorn_source::{ByteSource, MemorySource, ReadOutcome};
 use flate2::read::DeflateDecoder;
 
-use crate::entry::ZipMember;
-use crate::view::{read_raw_payload, ZipViewError, COMPRESSION_DEFLATE, COMPRESSION_STORED};
+use crate::{
+    entry::ZipMember,
+    view::{COMPRESSION_DEFLATE, COMPRESSION_STORED, ZipViewError, read_raw_payload},
+};
+
+/// Independent decode evidence for one ZIP member.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MemberDecodeFacts {
+    /// Compression method that was decoded.
+    pub method: u16,
+    /// Decoded payload byte length.
+    pub decoded_size: u64,
+    /// Compressed payload byte length that was read.
+    pub compressed_size: u64,
+    /// Whether the compressed input was fully consumed.
+    pub fully_consumed: bool,
+    /// CRC32 from the central directory.
+    pub crc32_expected: u32,
+    /// CRC32 of the decoded bytes.
+    pub crc32_actual: u32,
+    /// Bytes counted against the read budget.
+    pub budget_read_bytes: u64,
+    /// Bytes counted against the decode budget.
+    pub budget_decoded_bytes: u64,
+}
+
+impl MemberDecodeFacts {
+    /// Whether CRC and consumption evidence pass.
+    pub fn checksum_ok(&self) -> bool {
+        self.fully_consumed && self.crc32_actual == self.crc32_expected
+    }
+}
+
+/// Materializes a member and returns decode facts (CRC / consumption).
+pub fn decode_member_with_facts<S: ByteSource>(
+    label: impl Into<String>,
+    source: S,
+    member: &ZipMember,
+    budget: &ParseBudget,
+) -> Result<(MemorySource, MemberDecodeFacts), ZipViewError> {
+    let compressed = read_raw_payload(source, member)?;
+    let budget_read_bytes = compressed.len() as u64;
+    if budget_read_bytes > budget.max_read_bytes {
+        return Err(ZipViewError::BudgetExceeded);
+    }
+
+    let (decoded, fully_consumed) = match member.compression_method {
+        COMPRESSION_STORED => {
+            if member.uncompressed_size != member.compressed_size {
+                return Err(ZipViewError::SizeMismatch);
+            }
+            if compressed.len() as u64 != member.compressed_size {
+                return Err(ZipViewError::SizeMismatch);
+            }
+            (compressed, true)
+        }
+        COMPRESSION_DEFLATE => inflate_deflate_complete(&compressed, member.uncompressed_size, budget.max_decoded_bytes)?,
+        other => return Err(ZipViewError::UnsupportedCompression(other)),
+    };
+
+    let budget_decoded_bytes = decoded.len() as u64;
+    if budget_decoded_bytes > budget.max_decoded_bytes {
+        return Err(ZipViewError::BudgetExceeded);
+    }
+    if member.uncompressed_size != 0 && budget_decoded_bytes != member.uncompressed_size {
+        return Err(ZipViewError::SizeMismatch);
+    }
+
+    let crc32_actual = ieee_crc32(&decoded);
+    let facts = MemberDecodeFacts {
+        method: member.compression_method,
+        decoded_size: budget_decoded_bytes,
+        compressed_size: budget_read_bytes,
+        fully_consumed,
+        crc32_expected: member.crc32,
+        crc32_actual,
+        budget_read_bytes,
+        budget_decoded_bytes,
+    };
+    if !fully_consumed {
+        return Err(ZipViewError::IncompleteCompressedInput);
+    }
+    if crc32_actual != member.crc32 {
+        return Err(ZipViewError::CrcMismatch { expected: member.crc32, actual: crc32_actual });
+    }
+
+    Ok((MemorySource::from_bytes(label, decoded), facts))
+}
 
 /// Materializes a member into a `Decoded` memory source (stored or deflate).
 pub fn decode_member<S: ByteSource>(
@@ -14,56 +100,51 @@ pub fn decode_member<S: ByteSource>(
     member: &ZipMember,
     budget: &ParseBudget,
 ) -> Result<MemorySource, ZipViewError> {
-    let compressed = read_raw_payload(source, member)?;
-    if compressed.len() as u64 > budget.max_read_bytes {
-        return Err(ZipViewError::BudgetExceeded);
-    }
-
-    let decoded = match member.compression_method {
-        COMPRESSION_STORED => {
-            if member.uncompressed_size != member.compressed_size {
-                return Err(ZipViewError::SizeMismatch);
-            }
-            compressed
-        }
-        COMPRESSION_DEFLATE => inflate_deflate(
-            &compressed,
-            member.uncompressed_size,
-            budget.max_decoded_bytes,
-        )?,
-        other => return Err(ZipViewError::UnsupportedCompression(other)),
-    };
-
-    if decoded.len() as u64 > budget.max_decoded_bytes {
-        return Err(ZipViewError::BudgetExceeded);
-    }
-
-    Ok(MemorySource::from_bytes(label, decoded))
+    let (decoded, _facts) = decode_member_with_facts(label, source, member, budget)?;
+    Ok(decoded)
 }
 
-fn inflate_deflate(
+fn inflate_deflate_complete(
     input: &[u8],
     expected_uncompressed: u64,
     max_output: u64,
-) -> Result<Vec<u8>, ZipViewError> {
+) -> Result<(Vec<u8>, bool), ZipViewError> {
     if expected_uncompressed > max_output {
         return Err(ZipViewError::BudgetExceeded);
     }
-    let limit = if expected_uncompressed == 0 {
-        max_output
-    } else {
-        expected_uncompressed.min(max_output)
-    };
-    let decoder = DeflateDecoder::new(input);
+    let mut decoder = DeflateDecoder::new(input);
     let mut output = Vec::new();
-    decoder
-        .take(limit)
-        .read_to_end(&mut output)
-        .map_err(|_| ZipViewError::DecompressFailed)?;
-    if expected_uncompressed != 0 && output.len() as u64 != expected_uncompressed {
-        return Err(ZipViewError::SizeMismatch);
+    let mut buf = [0u8; 8 * 1024];
+    loop {
+        match decoder.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => {
+                if (output.len() as u64).saturating_add(n as u64) > max_output {
+                    return Err(ZipViewError::BudgetExceeded);
+                }
+                output.extend_from_slice(&buf[..n]);
+            }
+            Err(_) => return Err(ZipViewError::DecompressFailed),
+        }
     }
-    Ok(output)
+    let fully_consumed = decoder.total_in() as usize == input.len();
+    Ok((output, fully_consumed))
+}
+
+fn ieee_crc32(bytes: &[u8]) -> u32 {
+    let mut crc = 0xffff_ffffu32;
+    for &b in bytes {
+        crc ^= u32::from(b);
+        for _ in 0..8 {
+            if crc & 1 != 0 {
+                crc = (crc >> 1) ^ 0xEDB8_8320;
+            }
+            else {
+                crc >>= 1;
+            }
+        }
+    }
+    !crc
 }
 
 /// Reads and decodes a member payload into an owned buffer.

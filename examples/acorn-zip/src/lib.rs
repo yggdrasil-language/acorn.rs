@@ -2,17 +2,18 @@
 //! ZIP archive indexing for Acorn document containers.
 
 mod decode;
-mod eocd;
 mod entry;
+mod eocd;
 mod index;
 mod view;
 mod zip64;
 
-pub use decode::{decode_member, read_member_payload};
-pub use eocd::{find_eocd, EndOfCentralDirectory};
+pub use decode::{MemberDecodeFacts, decode_member, decode_member_with_facts, read_member_payload};
 pub use entry::ZipMember;
-pub use index::{index_zip, index_zip_bytes, ZipArchiveIndex, ZipIndexError};
+pub use eocd::{EndOfCentralDirectory, find_eocd};
+pub use index::{ZipArchiveIndex, ZipIndexError, index_zip, index_zip_bytes};
 pub use view::{
-    member_payload_range, open_stored_member, read_raw_payload, read_stored_payload, ZipViewError,
-    COMPRESSION_DEFLATE, COMPRESSION_STORED,
+    COMPRESSION_DEFLATE, COMPRESSION_STORED, ZipViewError, member_payload_range, open_stored_member, read_raw_payload,
+    read_stored_payload,
 };
+pub use zip64::{Zip64Fields, parse_zip64_extra};

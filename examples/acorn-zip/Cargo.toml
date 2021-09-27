@@ -14,7 +14,6 @@ acorn-core = { workspace = true }
 acorn-probe = { workspace = true }
 acorn-source = { workspace = true }
 flate2 = { workspace = true }
-thiserror = { workspace = true }
 
 [dev-dependencies]
 flate2 = { workspace = true }

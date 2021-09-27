@@ -1,8 +1,7 @@
 use acorn_core::ByteRange;
 use acorn_source::{ByteSource, ByteWindow, ReadOutcome, SourceRange};
 
-use crate::entry::ZipMember;
-use crate::ZipIndexError;
+use crate::{ZipIndexError, entry::ZipMember};
 
 /// ZIP compression method for stored (uncompressed) members.
 pub const COMPRESSION_STORED: u16 = 0;
@@ -11,27 +10,49 @@ pub const COMPRESSION_STORED: u16 = 0;
 pub const COMPRESSION_DEFLATE: u16 = 8;
 
 /// Errors opening a member payload view.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ZipViewError {
     /// Compression method is not supported for this operation.
-    #[error("compression method {0} is not supported for payload views")]
     UnsupportedCompression(u16),
     /// Payload range is invalid for the archive.
-    #[error("invalid member payload range")]
     InvalidRange,
     /// Underlying source window could not be created.
-    #[error("window error: {0}")]
     Window(String),
     /// Deflate decompression failed.
-    #[error("deflate decompression failed")]
     DecompressFailed,
     /// Declared and actual sizes do not match.
-    #[error("member size mismatch")]
     SizeMismatch,
     /// Decode exceeded the parse budget.
-    #[error("decode budget exceeded")]
     BudgetExceeded,
+    /// Decoded CRC32 does not match the central-directory CRC32.
+    CrcMismatch {
+        /// CRC32 declared by the central directory.
+        expected: u32,
+        /// CRC32 of the decoded payload.
+        actual: u32,
+    },
+    /// Compressed input was not fully consumed by the decoder.
+    IncompleteCompressedInput,
 }
+
+impl std::fmt::Display for ZipViewError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::UnsupportedCompression(method) => {
+                write!(f, "compression method {method} is not supported for payload views")
+            }
+            Self::InvalidRange => write!(f, "invalid member payload range"),
+            Self::Window(message) => write!(f, "window error: {message}"),
+            Self::DecompressFailed => write!(f, "deflate decompression failed"),
+            Self::SizeMismatch => write!(f, "member size mismatch"),
+            Self::BudgetExceeded => write!(f, "decode budget exceeded"),
+            Self::CrcMismatch { .. } => write!(f, "member CRC32 mismatch"),
+            Self::IncompleteCompressedInput => write!(f, "compressed input was not fully consumed"),
+        }
+    }
+}
+
+impl std::error::Error for ZipViewError {}
 
 /// Returns the compressed payload byte range inside the archive file space.
 pub fn member_payload_range(member: &ZipMember) -> ByteRange {
@@ -39,15 +60,13 @@ pub fn member_payload_range(member: &ZipMember) -> ByteRange {
 }
 
 /// Reads the compressed or stored payload bytes from the archive without decoding.
-pub fn read_raw_payload<S: ByteSource>(
-    source: S,
-    member: &ZipMember,
-) -> Result<Vec<u8>, ZipViewError> {
+pub fn read_raw_payload<S: ByteSource>(source: S, member: &ZipMember) -> Result<Vec<u8>, ZipViewError> {
     let range = member.payload_range;
-    let source_range = SourceRange::new(range.start, range.len)
-        .map_err(|error| ZipViewError::Window(error.to_string()))?;
-    let window = ByteWindow::new(source, 0, source_range)
-        .map_err(|error| ZipViewError::Window(error.to_string()))?;
+    if range.len == 0 {
+        return Ok(Vec::new());
+    }
+    let source_range = SourceRange::new(range.start, range.len).map_err(|error| ZipViewError::Window(error.to_string()))?;
+    let window = ByteWindow::new(source, 0, source_range).map_err(|error| ZipViewError::Window(error.to_string()))?;
     let len = window.length().ok_or(ZipViewError::InvalidRange)? as usize;
     let mut buffer = vec![0u8; len];
     match window.read_at(0, &mut buffer) {
@@ -63,31 +82,19 @@ pub fn read_raw_payload<S: ByteSource>(
 }
 
 /// Opens a bounded random-access view over a stored member payload.
-pub fn open_stored_member<S: ByteSource>(
-    source: S,
-    member: &ZipMember,
-) -> Result<ByteWindow<S>, ZipViewError> {
+pub fn open_stored_member<S: ByteSource>(source: S, member: &ZipMember) -> Result<ByteWindow<S>, ZipViewError> {
     if member.compression_method != COMPRESSION_STORED {
-        return Err(ZipViewError::UnsupportedCompression(
-            member.compression_method,
-        ));
+        return Err(ZipViewError::UnsupportedCompression(member.compression_method));
     }
     let range = member.payload_range;
-    let source_range = SourceRange::new(range.start, range.len)
-        .map_err(|error| ZipViewError::Window(error.to_string()))?;
-    ByteWindow::new(source, 0, source_range)
-        .map_err(|error| ZipViewError::Window(error.to_string()))
+    let source_range = SourceRange::new(range.start, range.len).map_err(|error| ZipViewError::Window(error.to_string()))?;
+    ByteWindow::new(source, 0, source_range).map_err(|error| ZipViewError::Window(error.to_string()))
 }
 
 /// Reads the full stored payload into a buffer.
-pub fn read_stored_payload<S: ByteSource>(
-    source: S,
-    member: &ZipMember,
-) -> Result<Vec<u8>, ZipViewError> {
+pub fn read_stored_payload<S: ByteSource>(source: S, member: &ZipMember) -> Result<Vec<u8>, ZipViewError> {
     if member.compression_method != COMPRESSION_STORED {
-        return Err(ZipViewError::UnsupportedCompression(
-            member.compression_method,
-        ));
+        return Err(ZipViewError::UnsupportedCompression(member.compression_method));
     }
     read_raw_payload(source, member)
 }
