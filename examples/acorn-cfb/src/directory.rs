@@ -1,5 +1,7 @@
-use crate::error::{CfbError, Result};
-use crate::fat::{FREE_SECTOR, NOSTREAM, END_OF_CHAIN};
+use crate::{
+    error::{CfbError, Result},
+    fat::{END_OF_CHAIN, FREE_SECTOR, NOSTREAM},
+};
 
 /// Directory entry object type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -40,10 +42,7 @@ pub(crate) struct DirectoryEntry {
 impl DirectoryEntry {
     pub fn parse(raw: &[u8]) -> Result<Self> {
         if raw.len() < 128 {
-            return Err(CfbError::TooSmall {
-                expected: 128,
-                actual: raw.len(),
-            });
+            return Err(CfbError::TooSmall { expected: 128, actual: raw.len() });
         }
 
         let name_len = u16::from_le_bytes([raw[0x40], raw[0x41]]) as usize;
@@ -57,46 +56,28 @@ impl DirectoryEntry {
             child: read_u32(raw, 0x4C)?,
             start_sector: read_u32(raw, 0x74)?,
             stream_size: u64::from_le_bytes([
-                raw[0x78],
-                raw[0x79],
-                raw[0x7A],
-                raw[0x7B],
-                raw[0x7C],
-                raw[0x7D],
-                raw[0x7E],
-                raw[0x7F],
+                raw[0x78], raw[0x79], raw[0x7A], raw[0x7B], raw[0x7C], raw[0x7D], raw[0x7E], raw[0x7F],
             ]),
         })
     }
 }
 
-pub(crate) fn find_stream_entry<'a>(
-    entries: &'a [DirectoryEntry],
-    path: &str,
-) -> Result<&'a DirectoryEntry> {
-    let segments: Vec<&str> = path
-        .split('/')
-        .filter(|segment| !segment.is_empty())
-        .collect();
+pub(crate) fn find_stream_entry<'a>(entries: &'a [DirectoryEntry], path: &str) -> Result<&'a DirectoryEntry> {
+    let segments: Vec<&str> = path.split('/').filter(|segment| !segment.is_empty()).collect();
     if segments.is_empty() {
-        return Err(CfbError::InvalidPath {
-            path: path.to_string(),
-        });
+        return Err(CfbError::InvalidPath { path: path.to_string() });
     }
 
     let mut current = 0usize;
     for segment in segments {
-        let child_sid = find_child(entries, current, segment).ok_or_else(|| CfbError::StreamNotFound {
-            path: path.to_string(),
-        })?;
+        let child_sid =
+            find_child(entries, current, segment).ok_or_else(|| CfbError::StreamNotFound { path: path.to_string() })?;
         current = child_sid;
     }
 
     let entry = &entries[current];
     if entry.entry_type != EntryType::Stream {
-        return Err(CfbError::StreamNotFound {
-            path: path.to_string(),
-        });
+        return Err(CfbError::StreamNotFound { path: path.to_string() });
     }
     Ok(entry)
 }
@@ -126,7 +107,8 @@ fn find_in_tree(entries: &[DirectoryEntry], sid: usize, name: &str) -> Option<us
             return find_in_tree(entries, entry.left as usize, name);
         }
         None
-    } else if entry.left != NOSTREAM {
+    }
+    else if entry.left != NOSTREAM {
         if let Some(found) = find_in_tree(entries, entry.left as usize, name) {
             return Some(found);
         }
@@ -134,9 +116,11 @@ fn find_in_tree(entries: &[DirectoryEntry], sid: usize, name: &str) -> Option<us
             return find_in_tree(entries, entry.right as usize, name);
         }
         None
-    } else if entry.right != NOSTREAM {
+    }
+    else if entry.right != NOSTREAM {
         find_in_tree(entries, entry.right as usize, name)
-    } else {
+    }
+    else {
         None
     }
 }
@@ -172,20 +156,12 @@ fn decode_entry_name(raw: &[u8], name_len: usize) -> Result<String> {
     if name_len < 2 || name_len > 64 || name_len % 2 != 0 {
         return Err(CfbError::InvalidEntryName);
     }
-    let utf16: Vec<u16> = raw[..name_len - 2]
-        .chunks_exact(2)
-        .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
-        .collect();
+    let utf16: Vec<u16> = raw[..name_len - 2].chunks_exact(2).map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]])).collect();
     String::from_utf16(&utf16).map_err(|_| CfbError::InvalidEntryName)
 }
 
 fn read_u32(raw: &[u8], offset: usize) -> Result<u32> {
-    Ok(u32::from_le_bytes([
-        raw[offset],
-        raw[offset + 1],
-        raw[offset + 2],
-        raw[offset + 3],
-    ]))
+    Ok(u32::from_le_bytes([raw[offset], raw[offset + 1], raw[offset + 2], raw[offset + 3]]))
 }
 
 pub(crate) fn load_directory(
@@ -203,9 +179,7 @@ pub(crate) fn load_directory(
 
     while sector_id != FREE_SECTOR && sector_id != END_OF_CHAIN {
         if sectors_read >= max_sectors.saturating_add(8) {
-            return Err(CfbError::ChainTooLong {
-                context: "directory".to_string(),
-            });
+            return Err(CfbError::ChainTooLong { context: "directory".to_string() });
         }
         let sector = read_sector(bytes, sector_size, sector_id, fat)?;
         for index in 0..entries_per_sector {
@@ -215,9 +189,7 @@ pub(crate) fn load_directory(
         sector_id = fat
             .get(sector_id as usize)
             .copied()
-            .ok_or_else(|| CfbError::UnexpectedEndOfChain {
-                context: "directory".to_string(),
-            })?;
+            .ok_or_else(|| CfbError::UnexpectedEndOfChain { context: "directory".to_string() })?;
         sectors_read += 1;
     }
 

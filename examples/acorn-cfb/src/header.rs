@@ -24,10 +24,7 @@ pub(crate) struct Header {
 impl Header {
     pub fn parse(bytes: &[u8]) -> Result<Self> {
         if bytes.len() < HEADER_SIZE {
-            return Err(CfbError::TooSmall {
-                expected: HEADER_SIZE,
-                actual: bytes.len(),
-            });
+            return Err(CfbError::TooSmall { expected: HEADER_SIZE, actual: bytes.len() });
         }
         if bytes[0..8] != COMPOUND_FILE_SIGNATURE {
             return Err(CfbError::InvalidSignature);
@@ -45,12 +42,7 @@ impl Header {
         let mut difat = [0u32; 109];
         for (index, slot) in difat.iter_mut().enumerate() {
             let offset = 0x4C + index * 4;
-            *slot = u32::from_le_bytes([
-                bytes[offset],
-                bytes[offset + 1],
-                bytes[offset + 2],
-                bytes[offset + 3],
-            ]);
+            *slot = u32::from_le_bytes([bytes[offset], bytes[offset + 1], bytes[offset + 2], bytes[offset + 3]]);
         }
 
         Ok(Self {
@@ -84,15 +76,7 @@ pub fn is_compound_file(bytes: &[u8]) -> bool {
 
 fn read_u32(bytes: &[u8], offset: usize) -> Result<u32> {
     if offset + 4 > bytes.len() {
-        return Err(CfbError::TooSmall {
-            expected: offset + 4,
-            actual: bytes.len(),
-        });
+        return Err(CfbError::TooSmall { expected: offset + 4, actual: bytes.len() });
     }
-    Ok(u32::from_le_bytes([
-        bytes[offset],
-        bytes[offset + 1],
-        bytes[offset + 2],
-        bytes[offset + 3],
-    ]))
+    Ok(u32::from_le_bytes([bytes[offset], bytes[offset + 1], bytes[offset + 2], bytes[offset + 3]]))
 }

@@ -1,10 +1,9 @@
-use thiserror::Error;
+use std::fmt;
 
 /// Errors while reading compound files.
-#[derive(Debug, Error)]
+#[derive(Debug)]
 pub enum CfbError {
     /// Input is shorter than required.
-    #[error("input too small: expected at least {expected} bytes, got {actual}")]
     TooSmall {
         /// Minimum bytes required.
         expected: usize,
@@ -12,22 +11,18 @@ pub enum CfbError {
         actual: usize,
     },
     /// Missing compound file signature.
-    #[error("invalid compound file signature")]
     InvalidSignature,
     /// Unsupported major sector size exponent.
-    #[error("unsupported sector shift {sector_shift}")]
     InvalidSectorShift {
         /// Header sector shift value.
         sector_shift: u16,
     },
     /// Unsupported mini sector size exponent.
-    #[error("unsupported mini sector shift {mini_sector_shift}")]
     InvalidMiniSectorShift {
         /// Header mini sector shift value.
         mini_sector_shift: u16,
     },
     /// Sector id is out of range for this file.
-    #[error("sector id {sector_id} out of range (max {max_sector})")]
     SectorOutOfRange {
         /// Referenced sector id.
         sector_id: u32,
@@ -35,37 +30,30 @@ pub enum CfbError {
         max_sector: u32,
     },
     /// FAT chain ended unexpectedly.
-    #[error("unexpected end of FAT chain while reading {context}")]
     UnexpectedEndOfChain {
         /// Human-readable read context.
         context: String,
     },
     /// FAT chain exceeded the safety bound.
-    #[error("FAT chain exceeded limit while reading {context}")]
     ChainTooLong {
         /// Human-readable read context.
         context: String,
     },
     /// Directory entry name is invalid UTF-16.
-    #[error("invalid directory entry name")]
     InvalidEntryName,
     /// Stream path was not found.
-    #[error("stream not found: {path}")]
     StreamNotFound {
         /// Requested absolute stream path.
         path: String,
     },
     /// Path syntax is invalid.
-    #[error("invalid stream path: {path}")]
     InvalidPath {
         /// Provided path string.
         path: String,
     },
     /// I/O error while loading compound file bytes.
-    #[error("io error: {0}")]
-    Io(#[from] std::io::Error),
+    Io(std::io::Error),
     /// Stream size exceeds configured read bound.
-    #[error("stream {path} size {size} exceeds limit {limit}")]
     StreamTooLarge {
         /// Stream path.
         path: String,
@@ -74,6 +62,54 @@ pub enum CfbError {
         /// Configured limit.
         limit: u64,
     },
+}
+
+impl fmt::Display for CfbError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::TooSmall { expected, actual } => {
+                write!(f, "input too small: expected at least {expected} bytes, got {actual}")
+            }
+            Self::InvalidSignature => write!(f, "invalid compound file signature"),
+            Self::InvalidSectorShift { sector_shift } => {
+                write!(f, "unsupported sector shift {sector_shift}")
+            }
+            Self::InvalidMiniSectorShift { mini_sector_shift } => {
+                write!(f, "unsupported mini sector shift {mini_sector_shift}")
+            }
+            Self::SectorOutOfRange { sector_id, max_sector } => {
+                write!(f, "sector id {sector_id} out of range (max {max_sector})")
+            }
+            Self::UnexpectedEndOfChain { context } => {
+                write!(f, "unexpected end of FAT chain while reading {context}")
+            }
+            Self::ChainTooLong { context } => {
+                write!(f, "FAT chain exceeded limit while reading {context}")
+            }
+            Self::InvalidEntryName => write!(f, "invalid directory entry name"),
+            Self::StreamNotFound { path } => write!(f, "stream not found: {path}"),
+            Self::InvalidPath { path } => write!(f, "invalid stream path: {path}"),
+            Self::Io(error) => write!(f, "io error: {error}"),
+            Self::StreamTooLarge { path, size, limit } => {
+                write!(f, "stream {path} size {size} exceeds limit {limit}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for CfbError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Io(error) => Some(error),
+            _ => None,
+        }
+    }
+}
+
+impl From<std::io::Error> for CfbError {
+    fn from(error: std::io::Error) -> Self {
+        Self::Io(error)
+    }
 }
 
 /// Result alias for CFB operations.

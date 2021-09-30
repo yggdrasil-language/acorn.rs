@@ -12,5 +12,4 @@ publish = false
 [dependencies]
 acorn-cfb = { workspace = true }
 acorn-core = { workspace = true }
-thiserror = { workspace = true }
 

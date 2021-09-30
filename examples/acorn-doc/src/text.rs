@@ -44,7 +44,8 @@ fn decode_complex_text(word_document: &[u8], table_stream: &[u8], default_unicod
     None
 }
 
-fn fib_clx_location(bytes: &[u8]) -> Option<(usize, usize)> {
+/// Locates the CLX range recorded in a Word FIB.
+pub fn fib_clx_location(bytes: &[u8]) -> Option<(usize, usize)> {
     if bytes.len() < 34 {
         return None;
     }
@@ -63,7 +64,8 @@ fn fib_clx_location(bytes: &[u8]) -> Option<(usize, usize)> {
     ))
 }
 
-pub(crate) fn decode_piece_table(word_document: &[u8], piece_table: &[u8], default_unicode: bool) -> Option<String> {
+/// Decodes a Word piece table into text.
+pub fn decode_piece_table(word_document: &[u8], piece_table: &[u8], default_unicode: bool) -> Option<String> {
     if piece_table.len() < 4 || (piece_table.len() - 4) % 12 != 0 {
         return None;
     }
@@ -79,16 +81,13 @@ pub(crate) fn decode_piece_table(word_document: &[u8], piece_table: &[u8], defau
         let pcd = cp_bytes + index * 8;
         let fc_raw = u32::from_le_bytes(piece_table[pcd + 2..pcd + 6].try_into().ok()?);
         let compressed = fc_raw & 0x4000_0000 != 0;
-        let offset = if compressed {
-            (fc_raw & !0x4000_0000) / 2
-        } else {
-            fc_raw
-        } as usize;
+        let offset = if compressed { (fc_raw & !0x4000_0000) / 2 } else { fc_raw } as usize;
         let character_count = (cp_end - cp_start) as usize;
         if compressed {
             let end = offset.checked_add(character_count)?;
             output.push_str(&decode_compressed_range(word_document.get(offset..end)?));
-        } else {
+        }
+        else {
             let end = offset.checked_add(character_count.checked_mul(2)?)?;
             output.push_str(&decode_text_range(word_document.get(offset..end)?, true));
         }
@@ -138,12 +137,11 @@ fn decode_compressed_range(bytes: &[u8]) -> String {
         .collect()
 }
 
-pub(crate) fn decode_text_range(bytes: &[u8], unicode: bool) -> String {
+/// Decodes a Word text range, including compressed and Unicode layouts.
+pub fn decode_text_range(bytes: &[u8], unicode: bool) -> String {
     let mut output = String::new();
     if unicode {
-        let units = bytes
-            .chunks_exact(2)
-            .map(|pair| u16::from_le_bytes([pair[0], pair[1]]));
+        let units = bytes.chunks_exact(2).map(|pair| u16::from_le_bytes([pair[0], pair[1]]));
         for decoded in char::decode_utf16(units) {
             let character = decoded.unwrap_or('\u{FFFD}');
             match character {
@@ -153,7 +151,8 @@ pub(crate) fn decode_text_range(bytes: &[u8], unicode: bool) -> String {
                 _ => {}
             }
         }
-    } else {
+    }
+    else {
         for byte in bytes {
             match byte {
                 0x0d | 0x0b | 0x0c => output.push('\n'),
@@ -164,71 +163,4 @@ pub(crate) fn decode_text_range(bytes: &[u8], unicode: bool) -> String {
         }
     }
     output
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{decode_piece_table, decode_text_range, fib_clx_location};
-
-    #[test]
-    fn decodes_compressed_piece_table() {
-        let mut piece_table = Vec::new();
-        piece_table.extend_from_slice(&0u32.to_le_bytes());
-        piece_table.extend_from_slice(&3u32.to_le_bytes());
-        piece_table.extend_from_slice(&0u16.to_le_bytes());
-        piece_table.extend_from_slice(&(0x4000_0009u32).to_le_bytes());
-        piece_table.extend_from_slice(&0u16.to_le_bytes());
-        assert_eq!(
-            decode_piece_table(b"xxxxA\rB", &piece_table, false).as_deref(),
-            Some("A\nB")
-        );
-    }
-
-    #[test]
-    fn decodes_unicode_piece_table() {
-        let mut piece_table = Vec::new();
-        piece_table.extend_from_slice(&0u32.to_le_bytes());
-        piece_table.extend_from_slice(&2u32.to_le_bytes());
-        piece_table.extend_from_slice(&0u16.to_le_bytes());
-        piece_table.extend_from_slice(&(4u32).to_le_bytes());
-        piece_table.extend_from_slice(&0u16.to_le_bytes());
-        assert_eq!(
-            decode_piece_table(b"xxxx\x60\x4F\x7D\x59", &piece_table, true).as_deref(),
-            Some("你好")
-        );
-    }
-
-    #[test]
-    fn decodes_unicode_surrogate_pairs_in_piece_table() {
-        let mut piece_table = Vec::new();
-        piece_table.extend_from_slice(&0u32.to_le_bytes());
-        piece_table.extend_from_slice(&2u32.to_le_bytes());
-        piece_table.extend_from_slice(&0u16.to_le_bytes());
-        piece_table.extend_from_slice(&(4u32).to_le_bytes());
-        piece_table.extend_from_slice(&0u16.to_le_bytes());
-        assert_eq!(
-            decode_piece_table(b"xxxx=\xD8\x00\xDE", &piece_table, true).as_deref(),
-            Some("😀")
-        );
-    }
-
-    #[test]
-    fn maps_word_manual_break_controls_to_text_line_breaks() {
-        assert_eq!(decode_text_range(b"A\x0BB\x0CC", false), "A\nB\nC");
-        assert_eq!(
-            decode_text_range(b"A\x00\x0B\x00\x00\x00\x0C\x00C\x00", true),
-            "A\n\nC"
-        );
-    }
-
-    #[test]
-    fn reads_clx_location_from_fib_layout() {
-        let mut fib = vec![0u8; 310];
-        fib[32..34].copy_from_slice(&0u16.to_le_bytes());
-        fib[34..36].copy_from_slice(&0u16.to_le_bytes());
-        fib[36..38].copy_from_slice(&34u16.to_le_bytes());
-        fib[38 + 33 * 8..38 + 33 * 8 + 4].copy_from_slice(&123u32.to_le_bytes());
-        fib[38 + 33 * 8 + 4..38 + 33 * 8 + 8].copy_from_slice(&456u32.to_le_bytes());
-        assert_eq!(fib_clx_location(&fib), Some((123, 456)));
-    }
 }

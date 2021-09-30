@@ -9,4 +9,4 @@ mod header;
 
 pub use compound::CompoundFile;
 pub use error::CfbError;
-pub use header::{is_compound_file, COMPOUND_FILE_SIGNATURE};
+pub use header::{COMPOUND_FILE_SIGNATURE, is_compound_file};

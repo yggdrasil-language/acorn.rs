@@ -8,12 +8,8 @@ fn build_oracle_fixture() -> Vec<u8> {
     {
         let mut compound = OracleCompoundFile::create(&mut buffer).expect("create compound file");
         {
-            let mut stream = compound
-                .create_stream("/WordDocument")
-                .expect("create WordDocument");
-            stream
-                .write_all(b"Hello WordDocument")
-                .expect("write WordDocument");
+            let mut stream = compound.create_stream("/WordDocument").expect("create WordDocument");
+            stream.write_all(b"Hello WordDocument").expect("write WordDocument");
         }
         {
             let mut stream = compound.create_stream("/0Table").expect("create 0Table");
@@ -34,17 +30,11 @@ fn oracle_matches_third_party_cfb_streams() {
     let reader = CompoundFile::open(bytes).expect("open acorn-cfb");
 
     for path in ["/WordDocument", "/0Table", "/MiniOnly"] {
-        let mut oracle_stream = oracle
-            .open_stream(path)
-            .unwrap_or_else(|error| panic!("oracle open {path}: {error}"));
+        let mut oracle_stream = oracle.open_stream(path).unwrap_or_else(|error| panic!("oracle open {path}: {error}"));
         let mut expected = Vec::new();
-        oracle_stream
-            .read_to_end(&mut expected)
-            .unwrap_or_else(|error| panic!("oracle read {path}: {error}"));
+        oracle_stream.read_to_end(&mut expected).unwrap_or_else(|error| panic!("oracle read {path}: {error}"));
 
-        let actual = reader
-            .read_stream(path)
-            .unwrap_or_else(|error| panic!("acorn read {path}: {error}"));
+        let actual = reader.read_stream(path).unwrap_or_else(|error| panic!("acorn read {path}: {error}"));
         assert_eq!(actual, expected, "stream bytes differ for {path}");
     }
 }

@@ -1,9 +1,11 @@
 use std::io::{Read, Seek};
 
-use crate::directory::{find_stream_entry, load_directory, EntryType};
-use crate::error::{CfbError, Result};
-use crate::fat::{load_fat, load_mini_fat, read_stream};
-use crate::header::{Header, COMPOUND_FILE_SIGNATURE};
+use crate::{
+    directory::{EntryType, find_stream_entry, load_directory},
+    error::{CfbError, Result},
+    fat::{load_fat, load_mini_fat, read_stream},
+    header::{COMPOUND_FILE_SIGNATURE, Header},
+};
 
 const DEFAULT_MAX_STREAM_BYTES: u64 = 64 * 1024 * 1024;
 
@@ -36,22 +38,11 @@ impl CompoundFile {
         let mini_sector_size = header.mini_sector_size();
         let fat = load_fat(&bytes, &header)?;
         let mini_fat = load_mini_fat(&bytes, &header, &fat)?;
-        let directory = load_directory(
-            &bytes,
-            sector_size,
-            header.first_dir_sector,
-            header.num_dir_sectors,
-            &fat,
-        )?;
-        let root = directory
-            .first()
-            .ok_or_else(|| CfbError::UnexpectedEndOfChain {
-                context: "root directory entry".to_string(),
-            })?;
+        let directory = load_directory(&bytes, sector_size, header.first_dir_sector, header.num_dir_sectors, &fat)?;
+        let root =
+            directory.first().ok_or_else(|| CfbError::UnexpectedEndOfChain { context: "root directory entry".to_string() })?;
         if root.entry_type != EntryType::Root {
-            return Err(CfbError::UnexpectedEndOfChain {
-                context: "root directory entry".to_string(),
-            });
+            return Err(CfbError::UnexpectedEndOfChain { context: "root directory entry".to_string() });
         }
 
         let mini_container_size = root.stream_size;
@@ -79,8 +70,7 @@ impl CompoundFile {
 
     /// Returns whether `bytes` begins with the compound file signature.
     pub fn is_compound_file(bytes: &[u8]) -> bool {
-        bytes.len() >= COMPOUND_FILE_SIGNATURE.len()
-            && bytes[0..COMPOUND_FILE_SIGNATURE.len()] == COMPOUND_FILE_SIGNATURE
+        bytes.len() >= COMPOUND_FILE_SIGNATURE.len() && bytes[0..COMPOUND_FILE_SIGNATURE.len()] == COMPOUND_FILE_SIGNATURE
     }
 
     /// Reads an entire stream by absolute path (for example `/WordDocument`).

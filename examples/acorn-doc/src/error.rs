@@ -1,16 +1,13 @@
-use thiserror::Error;
+use std::fmt;
 
 /// Errors while reading legacy Word documents.
-#[derive(Debug, Error)]
+#[derive(Debug)]
 pub enum DocError {
     /// Input is not a compound file.
-    #[error("input is not an OLE Compound File")]
     NotCompoundFile,
     /// Compound file container could not be opened.
-    #[error("compound file: {0}")]
     CompoundFile(String),
     /// Required OLE stream is missing or unreadable.
-    #[error("{stream} stream: {message}")]
     Stream {
         /// Stream path such as `/WordDocument`.
         stream: String,
@@ -18,12 +15,24 @@ pub enum DocError {
         message: String,
     },
     /// Document uses unsupported protection.
-    #[error("encrypted or obfuscated Word documents are not supported")]
     Encrypted,
     /// FIB layout or text range is invalid.
-    #[error("invalid Word FIB or text range")]
     InvalidFib,
 }
+
+impl fmt::Display for DocError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NotCompoundFile => write!(f, "input is not an OLE Compound File"),
+            Self::CompoundFile(message) => write!(f, "compound file: {message}"),
+            Self::Stream { stream, message } => write!(f, "{stream} stream: {message}"),
+            Self::Encrypted => write!(f, "encrypted or obfuscated Word documents are not supported"),
+            Self::InvalidFib => write!(f, "invalid Word FIB or text range"),
+        }
+    }
+}
+
+impl std::error::Error for DocError {}
 
 /// Result alias for legacy DOC operations.
 pub type Result<T> = std::result::Result<T, DocError>;
