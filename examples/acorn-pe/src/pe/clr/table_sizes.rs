@@ -69,9 +69,10 @@ impl CodedIndex {
         match self {
             Self::TypeDefOrRef => &[0x02, 0x01, 0x1B],
             Self::HasConstant => &[0x04, 0x08, 0x17],
-            Self::HasCustomAttribute => {
-                &[0x06, 0x04, 0x01, 0x02, 0x08, 0x09, 0x0A, 0x00, 0x0E, 0x17, 0x14, 0x11, 0x1A, 0x1B, 0x20, 0x23, 0x26, 0x27, 0x28, 0x2A, 0x2C]
-            }
+            Self::HasCustomAttribute => &[
+                0x06, 0x04, 0x01, 0x02, 0x08, 0x09, 0x0A, 0x00, 0x0E, 0x17, 0x14, 0x11, 0x1A, 0x1B, 0x20, 0x23, 0x26, 0x27,
+                0x28, 0x2A, 0x2C,
+            ],
             Self::HasFieldMarshal => &[0x04, 0x08],
             Self::HasDeclSecurity => &[0x02, 0x06, 0x20],
             Self::MemberRefParent => &[0x02, 0x01, 0x1A, 0x06, 0x1B],
@@ -122,9 +123,12 @@ pub fn table_row_size(md: &MetadataRoot, table_id: u8) -> Option<usize> {
         // 0x01 TypeRef: ResolutionScope(coded) + Name(str) + Namespace(str)
         0x01 => Some(coded_index_size(md, CodedIndex::ResolutionScope) + 2 * str_idx),
         // 0x02 TypeDef: Flags(4) + Name(str) + Namespace(str) + Extends(coded) + FieldList(table) + MethodList(table)
-        0x02 => {
-            Some(4 + 2 * str_idx + coded_index_size(md, CodedIndex::TypeDefOrRef) + table_index_size(md, 0x04) + table_index_size(md, 0x06))
-        }
+        0x02 => Some(
+            4 + 2 * str_idx
+                + coded_index_size(md, CodedIndex::TypeDefOrRef)
+                + table_index_size(md, 0x04)
+                + table_index_size(md, 0x06),
+        ),
         // 0x03 FieldPtr: Field(table)
         0x03 => Some(table_index_size(md, 0x04)),
         // 0x04 Field: Flags(2) + Name(str) + Signature(blob)
@@ -144,7 +148,11 @@ pub fn table_row_size(md: &MetadataRoot, table_id: u8) -> Option<usize> {
         // 0x0B Constant: Type(1) + Padding(1) + Parent(coded) + Value(blob)
         0x0B => Some(2 + coded_index_size(md, CodedIndex::HasConstant) + blob_idx),
         // 0x0C CustomAttribute: Parent(coded) + Type(coded) + Value(blob)
-        0x0C => Some(coded_index_size(md, CodedIndex::HasCustomAttribute) + coded_index_size(md, CodedIndex::CustomAttributeType) + blob_idx),
+        0x0C => Some(
+            coded_index_size(md, CodedIndex::HasCustomAttribute)
+                + coded_index_size(md, CodedIndex::CustomAttributeType)
+                + blob_idx,
+        ),
         // 0x0D FieldMarshal: Parent(coded) + NativeType(blob)
         0x0D => Some(coded_index_size(md, CodedIndex::HasFieldMarshal) + blob_idx),
         // 0x0E DeclSecurity: Action(2) + Parent(coded) + PermissionSet(blob)

@@ -1,6 +1,26 @@
-use miette::{Result, miette};
+use std::fmt;
 
 use super::layout::{ELF_EHDR_SIZE, ELF_LOAD_BASE, ELF_PHDR_SIZE, ElfSectionLayout};
+
+/// 原生 `ELF` 写出错误。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ElfWriteError {
+    /// `.text` 节不能为空。
+    EmptyText,
+    /// 节过大。
+    SizeOverflow(&'static str),
+}
+
+impl fmt::Display for ElfWriteError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::EmptyText => write!(f, "`.text` 节不能为空"),
+            Self::SizeOverflow(what) => write!(f, "{what} 过大"),
+        }
+    }
+}
+
+impl std::error::Error for ElfWriteError {}
 
 /// 待写入的原生 ELF 镜像。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -18,13 +38,13 @@ pub struct NativeElfWriter;
 
 impl NativeElfWriter {
     /// 将镜像写入静态 `ELF64` `ET_EXEC` 可执行文件。
-    pub fn write_executable(image: &NativeElfImage) -> Result<Vec<u8>> {
+    pub fn write_executable(image: &NativeElfImage) -> Result<Vec<u8>, ElfWriteError> {
         if image.text.is_empty() {
-            return Err(miette!("`.text` 节不能为空"));
+            return Err(ElfWriteError::EmptyText);
         }
 
-        let text_len = u32::try_from(image.text.len()).map_err(|_| miette!("`.text` 过大"))?;
-        let rodata_len = u32::try_from(image.rodata.len()).map_err(|_| miette!("`.rodata` 过大"))?;
+        let text_len = u32::try_from(image.text.len()).map_err(|_| ElfWriteError::SizeOverflow("`.text`"))?;
+        let rodata_len = u32::try_from(image.rodata.len()).map_err(|_| ElfWriteError::SizeOverflow("`.rodata`"))?;
         let layout = ElfSectionLayout::compute(text_len, rodata_len);
         let entry = u64::from(layout.text_vaddr + image.entry_point);
 
@@ -82,20 +102,5 @@ fn write_phdr(out: &mut Vec<u8>, file_size: u32) {
 fn pad_to(out: &mut Vec<u8>, size: usize) {
     while out.len() < size {
         out.push(0);
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn writes_elf_magic_and_entry() {
-        let image = NativeElfImage { text: vec![0x31, 0xC0, 0xC3], rodata: Vec::new(), entry_point: 0 };
-        let bytes = NativeElfWriter::write_executable(&image).expect("write elf");
-        assert_eq!(&bytes[0..4], b"\x7fELF");
-        assert_eq!(bytes[4], 2);
-        assert_eq!(u16::from_le_bytes([bytes[16], bytes[17]]), 2);
-        assert_eq!(u16::from_le_bytes([bytes[18], bytes[19]]), 62);
     }
 }

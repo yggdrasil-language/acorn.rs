@@ -264,7 +264,9 @@ fn resolve_method_tokens(
                     member_ref_map,
                     module_name,
                 )
-                .map_err(|err| annotate_pe_owner_error(err, &method.method.name, method_ref.owner.as_deref(), &method_ref.name))?;
+                .map_err(|err| {
+                    annotate_pe_owner_error(err, &method.method.name, method_ref.owner.as_deref(), &method_ref.name)
+                })?;
                 MsilInstructionOperand::Token(token)
             }
             MsilInstructionOperand::Type(type_name) => {
@@ -282,7 +284,9 @@ fn resolve_method_tokens(
                         type_ref_map,
                         type_spec_map,
                     )
-                    .map_err(|err| annotate_pe_owner_error(err, &method.method.name, Some(type_name.as_str()), "type-operand"))?;
+                    .map_err(|err| {
+                        annotate_pe_owner_error(err, &method.method.name, Some(type_name.as_str()), "type-operand")
+                    })?;
                     MsilInstructionOperand::Token(type_token)
                 }
                 else if let Some(token) = local_type_def_tokens.get(&type_name).copied() {
@@ -294,8 +298,17 @@ fn resolve_method_tokens(
                 else {
                     let normalized = normalize_external_type_owner_alias(&type_name);
                     let lookup = if normalized != type_name { normalized.to_string() } else { type_name.clone() };
-                    let type_token = ensure_type_ref_token(&lookup, metadata, assembly_ref_rows, type_ref_rows, assembly_ref_map, type_ref_map)
-                        .map_err(|err| annotate_pe_owner_error(err, &method.method.name, Some(type_name.as_str()), "type-operand"))?;
+                    let type_token = ensure_type_ref_token(
+                        &lookup,
+                        metadata,
+                        assembly_ref_rows,
+                        type_ref_rows,
+                        assembly_ref_map,
+                        type_ref_map,
+                    )
+                    .map_err(|err| {
+                        annotate_pe_owner_error(err, &method.method.name, Some(type_name.as_str()), "type-operand")
+                    })?;
                     MsilInstructionOperand::Token(type_token)
                 }
             }
@@ -308,7 +321,8 @@ fn resolve_method_tokens(
                     .or_else(|| {
                         // 回退：当 owner 推断失败（如回退为 "Object"）时，
                         // 按字段名在所有本地类型中搜索唯一匹配项。
-                        let mut matches = field_token_map.iter().filter(|((_, candidate), _)| candidate.as_str() == field_name.as_str());
+                        let mut matches =
+                            field_token_map.iter().filter(|((_, candidate), _)| candidate.as_str() == field_name.as_str());
                         let (_, first_token) = matches.next()?;
                         if matches.next().is_some() {
                             return None;
@@ -360,7 +374,8 @@ fn resolve_method_ref_token(
         }
     }
     let suffix = format!("__{}", normalized_name);
-    let mut suffix_matches = local_method_tokens.iter().filter(|(key, _)| key.ends_with(&suffix) || key.as_str() == method_ref.name);
+    let mut suffix_matches =
+        local_method_tokens.iter().filter(|(key, _)| key.ends_with(&suffix) || key.as_str() == method_ref.name);
     if let Some((_, token)) = suffix_matches.next() {
         if suffix_matches.next().is_none() {
             return Ok(*token);
@@ -376,7 +391,8 @@ fn resolve_method_ref_token(
         return Err(PeWriterError::MissingLocalMethodToken(method_ref.name.clone()));
     }
 
-    let owner = method_ref.owner.as_deref().ok_or_else(|| PeWriterError::MissingExternalMethodOwner(method_ref.name.clone()))?;
+    let owner =
+        method_ref.owner.as_deref().ok_or_else(|| PeWriterError::MissingExternalMethodOwner(method_ref.name.clone()))?;
     let type_token = ensure_type_ref_token(owner, metadata, assembly_ref_rows, type_ref_rows, assembly_ref_map, type_ref_map)?;
     let type_row = (type_token & 0x00FF_FFFF) as u16;
     let class_coded_index = (type_row << 3) | 0x0001;
@@ -497,7 +513,15 @@ fn ensure_type_spec_token(
         value_type_names: local_type_token_map.value_type_names.clone(),
         value_type_tokens: local_type_token_map.value_type_tokens.clone(),
     };
-    ensure_named_type_tokens_for_encode(&msil_ty, &mut encode_map, metadata, assembly_ref_rows, type_ref_rows, assembly_ref_map, type_ref_map)?;
+    ensure_named_type_tokens_for_encode(
+        &msil_ty,
+        &mut encode_map,
+        metadata,
+        assembly_ref_rows,
+        type_ref_rows,
+        assembly_ref_map,
+        type_ref_map,
+    )?;
 
     let blob = encode_element_type(&msil_ty, &encode_map);
     let signature_offset = metadata.blob.add(&blob);
@@ -543,9 +567,15 @@ fn ensure_named_type_tokens_for_encode(
     type_ref_map: &mut BTreeMap<(String, String), u16>,
 ) -> Result<(), PeWriterError> {
     match ty {
-        MsilType::SzArray(inner) => {
-            ensure_named_type_tokens_for_encode(inner, encode_map, metadata, assembly_ref_rows, type_ref_rows, assembly_ref_map, type_ref_map)
-        }
+        MsilType::SzArray(inner) => ensure_named_type_tokens_for_encode(
+            inner,
+            encode_map,
+            metadata,
+            assembly_ref_rows,
+            type_ref_rows,
+            assembly_ref_map,
+            type_ref_map,
+        ),
         MsilType::Named(name) => {
             let normalized = normalize_external_type_owner_alias(name);
             let lookup = if normalized != name.as_str() { normalized.to_string() } else { name.clone() };
@@ -560,7 +590,8 @@ fn ensure_named_type_tokens_for_encode(
                 return Ok(());
             }
             if lookup.starts_with('[') {
-                let token = ensure_type_ref_token(&lookup, metadata, assembly_ref_rows, type_ref_rows, assembly_ref_map, type_ref_map)?;
+                let token =
+                    ensure_type_ref_token(&lookup, metadata, assembly_ref_rows, type_ref_rows, assembly_ref_map, type_ref_map)?;
                 encode_map.tokens.insert(name.clone(), token);
                 encode_map.tokens.insert(lookup.clone(), token);
                 // BCL enums / structs referenced only via MemberRef must encode as

@@ -4,8 +4,6 @@
 
 use std::{collections::BTreeMap, fmt};
 
-use miette::{Diagnostic, Severity};
-
 mod imports;
 mod meta_builder;
 mod metadata;
@@ -21,21 +19,22 @@ mod tokens;
 use self::{
     imports::build_import_table,
     metadata::{
-        FieldRow, ParamRow, TableBuildInfo, UserTypeDefRow, build_local_var_sig, build_method_signature, build_mvid, build_tables_stream,
+        FieldRow, ParamRow, TableBuildInfo, UserTypeDefRow, build_local_var_sig, build_method_signature, build_mvid,
+        build_tables_stream,
     },
     relocations::build_relocation_section,
     tokens::resolve_module_tokens,
 };
-use crate::msil::{MethodBodyEncoder, MethodBodyError, MsilModule};
 use super::writer::{PeBinaryWriter, align_up};
+use crate::msil::{MethodBodyEncoder, MethodBodyError, MsilModule};
 
 pub use self::{
     meta_builder::{ClrMetadataBuilder, ClrMetadataError, UserStringsHeap},
     method_body::{FatFormat, IlInstruction, LocalVarFlags, LocalVarType, MethodBody, MethodBodyFlags, parse_method_body_il},
     table_sizes::{CodedIndex, coded_index_size, heap_index_size, table_data_offset, table_index_size, table_row_size},
     tables::{
-        ElementType, MemberRefParent, MethodSignature, decode_element_type, decode_member_ref_parent, decode_method_signature, read_idx,
-        read_u32_table,
+        ElementType, MemberRefParent, MethodSignature, decode_element_type, decode_member_ref_parent, decode_method_signature,
+        read_idx, read_u32_table,
     },
 };
 
@@ -129,57 +128,6 @@ impl std::error::Error for PeWriterError {
     }
 }
 
-impl Diagnostic for PeWriterError {
-    fn code<'a>(&'a self) -> Option<Box<dyn fmt::Display + 'a>> {
-        Some(Box::new(match self {
-            Self::Io(_) => "legion::clr::pe::io",
-            Self::MethodBody(_) => "legion::clr::pe::method_body",
-            Self::MissingLocalMethodToken(_) => "legion::clr::pe::missing_local_method_token",
-            Self::MissingExternalMethodOwner(_) => "legion::clr::pe::missing_external_method_owner",
-            Self::ExternalTypeOwnerMissingBracket(_) => "legion::clr::pe::external_type_owner_missing_bracket",
-            Self::InvalidExternalTypeOwner(_) => "legion::clr::pe::invalid_external_type_owner",
-            Self::UnsupportedExternalTypeOwner(_) => "legion::clr::pe::unsupported_external_type_owner",
-            Self::MetadataIndexOverflow { .. } => "legion::clr::pe::metadata_index_overflow",
-            Self::NoEntryPoint => "legion::clr::pe::no_entry_point",
-            Self::NoMethodBody => "legion::clr::pe::no_method_body",
-        }))
-    }
-
-    fn severity(&self) -> Option<Severity> {
-        Some(Severity::Error)
-    }
-
-    fn help<'a>(&'a self) -> Option<Box<dyn fmt::Display + 'a>> {
-        Some(Box::new(match self {
-            Self::Io(_) => "请检查输出目录是否存在，以及当前进程是否具备写入权限",
-            Self::MethodBody(_) => "请检查 `MSIL` 指令与操作数是否匹配",
-            Self::MissingLocalMethodToken(_) => "请确认被引用的方法已经在当前模块中完成 token 分配",
-            Self::MissingExternalMethodOwner(_) => "请为外部方法补充显式 owner，例如 `[System.Console]System.Console`",
-            Self::ExternalTypeOwnerMissingBracket(_) => "外部类型 owner 应使用 `[程序集]命名空间.类型` 形式",
-            Self::InvalidExternalTypeOwner(_) => "请检查外部类型 owner 中的程序集名和类型名是否都非空",
-            Self::UnsupportedExternalTypeOwner(_) => "当前仅支持带显式程序集前缀的外部类型 owner",
-            Self::MetadataIndexOverflow { .. } => "请检查字符串堆、blob 堆或元数据表项数量是否超过当前编码上限",
-            Self::NoEntryPoint => "可执行 `CLR` 镜像必须包含唯一入口点",
-            Self::NoMethodBody => "请确认模块至少生成了一个可编码的方法体",
-        }))
-    }
-
-    fn diagnostic_source(&self) -> Option<&dyn Diagnostic> {
-        match self {
-            Self::MethodBody(error) => Some(error),
-            Self::Io(_)
-            | Self::MissingLocalMethodToken(_)
-            | Self::MissingExternalMethodOwner(_)
-            | Self::ExternalTypeOwnerMissingBracket(_)
-            | Self::InvalidExternalTypeOwner(_)
-            | Self::UnsupportedExternalTypeOwner(_)
-            | Self::MetadataIndexOverflow { .. }
-            | Self::NoEntryPoint
-            | Self::NoMethodBody => None,
-        }
-    }
-}
-
 impl From<std::io::Error> for PeWriterError {
     fn from(e: std::io::Error) -> Self {
         Self::Io(e)
@@ -251,7 +199,11 @@ impl PeWriter {
             };
             method_bodies.push(MethodBodyEncoder::encode(method, local_var_sig_token).map_err(PeWriterError::MethodBody)?);
             method_name_offsets.push(metadata.strings.add(&method.method.name));
-            method_sig_offsets.push(metadata.blob.add(&build_method_signature(&method.method.signature, false, &type_token_map)));
+            method_sig_offsets.push(metadata.blob.add(&build_method_signature(
+                &method.method.signature,
+                false,
+                &type_token_map,
+            )));
         }
         for type_def in &resolved_module.types {
             for method in &type_def.methods {
@@ -271,8 +223,13 @@ impl PeWriter {
                 // Instance `.ctor` must always carry HASTHIS — even if owner was dropped —
                 // otherwise MethodAttributes (0x1886, no Static) disagree with the blob and
                 // CoreCLR raises TypeLoadException: "Incorrect signature".
-                let has_this = method.method.name == ".ctor" || (method.method.owner.is_some() && !is_static_type_method(method));
-                method_sig_offsets.push(metadata.blob.add(&build_method_signature(&method.method.signature, has_this, &type_token_map)));
+                let has_this =
+                    method.method.name == ".ctor" || (method.method.owner.is_some() && !is_static_type_method(method));
+                method_sig_offsets.push(metadata.blob.add(&build_method_signature(
+                    &method.method.signature,
+                    has_this,
+                    &type_token_map,
+                )));
             }
         }
         if method_bodies.is_empty() {
@@ -379,7 +336,13 @@ impl PeWriter {
 
         // 5. 节头。
         self.write_text_section_header(&mut writer, text_section_rva, text_section_virtual_size, text_section_raw_size);
-        self.write_reloc_section_header(&mut writer, reloc_section_rva, reloc_virtual_size, reloc_section_raw_size, reloc_section_raw_pointer);
+        self.write_reloc_section_header(
+            &mut writer,
+            reloc_section_rva,
+            reloc_virtual_size,
+            reloc_section_raw_size,
+            reloc_section_raw_pointer,
+        );
 
         // 5.1 头部填充：将文件偏移对齐到 file_alignment (0x200)，
         // 使得 .text 节内容起始偏移与节头中声明的 pointer_to_raw_data 一致。
@@ -718,8 +681,13 @@ impl PeWriter {
         let tables_data = build_tables_stream(metadata, &table_info);
 
         // 流定义：名称 + 数据。
-        let streams: Vec<(&str, &[u8])> =
-            vec![("#Strings", &strings_data), ("#US", &us_data), ("#GUID", &guid_data), ("#Blob", &blob_data), ("#~", &tables_data)];
+        let streams: Vec<(&str, &[u8])> = vec![
+            ("#Strings", &strings_data),
+            ("#US", &us_data),
+            ("#GUID", &guid_data),
+            ("#Blob", &blob_data),
+            ("#~", &tables_data),
+        ];
 
         // 计算元数据根头大小（BSJB 签名到流头之前）。
         let metadata_root_header_size = 4 + 2 + 2 + 4 + 4 + version_padded + 2 + 2;
@@ -808,7 +776,12 @@ fn build_local_method_token_map(module: &MsilModule) -> BTreeMap<String, u32> {
 fn find_entry_method_lookup_key(module: &MsilModule, _module_name: &str) -> Option<String> {
     if let Some(method) = module.global_methods.iter().find(|m| m.is_entry_point) {
         return Some(
-            method.method.owner.as_ref().map(|owner| format!("{}.{}", owner, method.method.name)).unwrap_or_else(|| method.method.name.clone()),
+            method
+                .method
+                .owner
+                .as_ref()
+                .map(|owner| format!("{}.{}", owner, method.method.name))
+                .unwrap_or_else(|| method.method.name.clone()),
         );
     }
 

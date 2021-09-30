@@ -10,8 +10,10 @@ mod parser;
 
 pub use method_body::{MethodBodyEncoder, MethodBodyError};
 pub use model::{
-    MsilAssembly, MsilField, MsilInstruction, MsilInstructionOperand, MsilMethodBody, MsilMethodRef, MsilMethodSignature, MsilModule,
-    MsilOpcode, MsilType, MsilTypeDef,
+    MsilAssembly, MsilField, MsilInstruction, MsilInstructionOperand, MsilMethodBody, MsilMethodRef, MsilMethodSignature,
+    MsilModule, MsilOpcode, MsilType, MsilTypeDef,
 };
-pub use op_codes::{IlOperand, OP_CODES, OpCodeInfo, OperandType, decode_op_code, get_operand_type, lookup_opcode, read_operand};
+pub use op_codes::{
+    IlOperand, OP_CODES, OpCodeInfo, OperandType, decode_op_code, get_operand_type, lookup_opcode, read_operand,
+};
 pub use parser::{MsilParser, MsilTextMethod};

@@ -137,13 +137,23 @@ pub fn decode_member_ref_parent(coded: u32, _idx_size: usize) -> MemberRefParent
 /// 参数与返回类型不再继续解码。
 pub fn decode_method_signature(blob: &[u8]) -> MethodSignature {
     if blob.is_empty() {
-        return MethodSignature { calling_convention: 0, param_count: 0, return_type: ElementType::Unknown(0), param_types: Vec::new() };
+        return MethodSignature {
+            calling_convention: 0,
+            param_count: 0,
+            return_type: ElementType::Unknown(0),
+            param_types: Vec::new(),
+        };
     }
     let mut cursor = 0usize;
     let cc = blob[cursor];
     cursor += 1;
     if cc != 0x00 {
-        return MethodSignature { calling_convention: cc, param_count: 0, return_type: ElementType::Unknown(cc), param_types: Vec::new() };
+        return MethodSignature {
+            calling_convention: cc,
+            param_count: 0,
+            return_type: ElementType::Unknown(cc),
+            param_types: Vec::new(),
+        };
     }
     let (param_count, len_bytes) = read_compressed_uint(blob, cursor);
     cursor += len_bytes;

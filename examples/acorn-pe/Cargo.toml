@@ -8,5 +8,4 @@ description = "PE, COFF, and ELF binary format encoding (Acorn domain)"
 repository = "https://github.com/yggdrasil-language/acorn.rs"
 
 [dependencies]
-miette = { workspace = true }
 serde = { workspace = true }

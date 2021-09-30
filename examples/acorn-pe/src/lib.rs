@@ -1,4 +1,5 @@
-#![doc = include_str!("readme.md")]
+#![warn(missing_docs)]
+#![doc = include_str!("../readme.md")]
 
 /// `COFF` 对象文件模型与写出器。
 pub mod coff;

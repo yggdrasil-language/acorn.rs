@@ -1,9 +1,29 @@
 mod layout;
 
-use miette::{Result, miette};
+use std::fmt;
 
 use self::layout::{NativeSectionLayout, SectionPlacement};
 pub(crate) use super::writer::{FILE_ALIGNMENT, IMAGE_BASE_X64, PeBinaryWriter, SECTION_ALIGNMENT};
+
+/// 原生 `PE` 写出错误。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NativePeWriteError {
+    /// `.text` 节不能为空。
+    EmptyText,
+    /// 节或导入目录过大。
+    SizeOverflow(&'static str),
+}
+
+impl fmt::Display for NativePeWriteError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::EmptyText => write!(f, "`.text` 节不能为空"),
+            Self::SizeOverflow(what) => write!(f, "{what} 过大"),
+        }
+    }
+}
+
+impl std::error::Error for NativePeWriteError {}
 
 /// 单个 `DLL` 导入描述。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -34,14 +54,14 @@ pub struct NativePeWriter;
 
 impl NativePeWriter {
     /// 将原生镜像写入 `PE32+` 控制台可执行文件。
-    pub fn write_executable(image: &NativePeImage) -> Result<Vec<u8>> {
+    pub fn write_executable(image: &NativePeImage) -> Result<Vec<u8>, NativePeWriteError> {
         if image.text.is_empty() {
-            return Err(miette!("`.text` 节不能为空"));
+            return Err(NativePeWriteError::EmptyText);
         }
 
-        let text_len = u32::try_from(image.text.len()).map_err(|_| miette!("`.text` 过大"))?;
-        let rdata_len = u32::try_from(image.rdata.len()).map_err(|_| miette!("`.rdata` 过大"))?;
-        let idata_len = u32::try_from(image.idata.len()).map_err(|_| miette!("`.idata` 过大"))?;
+        let text_len = u32::try_from(image.text.len()).map_err(|_| NativePeWriteError::SizeOverflow("`.text`"))?;
+        let rdata_len = u32::try_from(image.rdata.len()).map_err(|_| NativePeWriteError::SizeOverflow("`.rdata`"))?;
+        let idata_len = u32::try_from(image.idata.len()).map_err(|_| NativePeWriteError::SizeOverflow("`.idata`"))?;
         let layout = NativeSectionLayout::compute(text_len, rdata_len, idata_len);
 
         let mut idata = image.idata.clone();
@@ -49,7 +69,7 @@ impl NativePeWriter {
             0
         }
         else {
-            u32::try_from((image.imports.len() + 1) * 20).map_err(|_| miette!("导入目录过大"))?
+            u32::try_from((image.imports.len() + 1) * 20).map_err(|_| NativePeWriteError::SizeOverflow("导入目录"))?
         };
         let import_directory_rva = layout.idata.map(|section| section.rva).unwrap_or(0);
         if let Some(idata_section) = layout.idata {
@@ -211,41 +231,5 @@ fn write_section(writer: &mut PeBinaryWriter, name: &[u8; 8], section: &SectionP
 fn pad_to(writer: &mut PeBinaryWriter, size: usize) {
     while writer.len() < size {
         writer.write_u8(0);
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn writes_amd64_console_executable() {
-        let image = NativePeImage { text: vec![0x31, 0xC0, 0xC3], rdata: Vec::new(), idata: Vec::new(), imports: Vec::new(), entry_point: 0 };
-        let bytes = NativePeWriter::write_executable(&image).expect("write pe");
-        assert_eq!(&bytes[0..2], b"MZ");
-        assert_eq!(&bytes[0x40..0x44], b"PE\0\0");
-        assert_eq!(u16::from_le_bytes([bytes[0x44], bytes[0x45]]), 0x8664);
-
-        let pe_offset = u32::from_le_bytes(bytes[0x3C..0x40].try_into().unwrap()) as usize;
-        let magic = u16::from_le_bytes(bytes[pe_offset + 24..pe_offset + 26].try_into().unwrap());
-        assert_eq!(magic, 0x020B);
-        let section_count = u16::from_le_bytes(bytes[pe_offset + 6..pe_offset + 8].try_into().unwrap());
-        assert_eq!(section_count, 1);
-        let import_rva = u32::from_le_bytes(bytes[pe_offset + 24 + 120..pe_offset + 24 + 124].try_into().unwrap());
-        let import_size = u32::from_le_bytes(bytes[pe_offset + 24 + 124..pe_offset + 24 + 128].try_into().unwrap());
-        assert_eq!(import_rva, 0);
-        assert_eq!(import_size, 0);
-    }
-
-    #[test]
-    #[cfg(windows)]
-    fn runs_stub_executable() {
-        let image = NativePeImage { text: vec![0x31, 0xC0, 0xC3], rdata: Vec::new(), idata: Vec::new(), imports: Vec::new(), entry_point: 0 };
-        let bytes = NativePeWriter::write_executable(&image).expect("write pe");
-        let path = std::env::temp_dir().join(format!("valkyrie-native-stub-{}.exe", std::process::id()));
-        std::fs::write(&path, &bytes).expect("write");
-        let status = std::process::Command::new(&path).status().expect("run");
-        let _ = std::fs::remove_file(&path);
-        assert!(status.success(), "status={status:?}");
     }
 }

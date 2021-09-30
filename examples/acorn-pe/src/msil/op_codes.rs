@@ -307,7 +307,9 @@ pub fn get_operand_type(op_key: usize) -> OperandType {
         // 字段 token（ldfld, ldflda, stfld, ldsfld, ldsflda, stsfld）
         0x79 | 0x7A | 0x7B | 0x7C | 0x7D | 0x7E => OperandType::FieldToken,
         // 类型 token（cpobj, ldobj, castclass, isinst, unbox, box, newarr, ldelem.any, stelem.any, unbox.any, stobj, initobj, constrained., sizeof）
-        0x70 | 0x71 | 0x74 | 0x75 | 0x77 | 0x7F | 0x8C | 0x8D | 0xA3 | 0xA4 | 0xA5 | 0xFE15 | 0xFE16 | 0xFE1C => OperandType::TypeToken,
+        0x70 | 0x71 | 0x74 | 0x75 | 0x77 | 0x7F | 0x8C | 0x8D | 0xA3 | 0xA4 | 0xA5 | 0xFE15 | 0xFE16 | 0xFE1C => {
+            OperandType::TypeToken
+        }
         // 字符串 token（ldstr）
         0x72 => OperandType::StringToken,
         // 通用元数据 token（ldtoken）
@@ -367,7 +369,9 @@ pub fn read_operand(op_key: usize, data: &[u8], offset: usize, size: usize, il_o
         OperandType::StringToken => IlOperand::StringToken(read_u32_le(data, offset)),
         OperandType::Token => IlOperand::Token(read_u32_le(data, offset)),
         OperandType::Integer1 => IlOperand::Int8(data[offset] as i8),
-        OperandType::Integer4 => IlOperand::Int32(i32::from_le_bytes([data[offset], data[offset + 1], data[offset + 2], data[offset + 3]])),
+        OperandType::Integer4 => {
+            IlOperand::Int32(i32::from_le_bytes([data[offset], data[offset + 1], data[offset + 2], data[offset + 3]]))
+        }
         OperandType::Integer8 => IlOperand::Int64(i64::from_le_bytes([
             data[offset],
             data[offset + 1],
@@ -378,7 +382,9 @@ pub fn read_operand(op_key: usize, data: &[u8], offset: usize, size: usize, il_o
             data[offset + 6],
             data[offset + 7],
         ])),
-        OperandType::Float4 => IlOperand::Float32(f32::from_le_bytes([data[offset], data[offset + 1], data[offset + 2], data[offset + 3]])),
+        OperandType::Float4 => {
+            IlOperand::Float32(f32::from_le_bytes([data[offset], data[offset + 1], data[offset + 2], data[offset + 3]]))
+        }
         OperandType::Float8 => IlOperand::Float64(f64::from_le_bytes([
             data[offset],
             data[offset + 1],

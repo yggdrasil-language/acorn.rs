@@ -1,6 +1,26 @@
-use miette::{Result, miette};
+use std::fmt;
 
 use super::layout::{ELF_EHDR_SIZE, ELF_PHDR_SIZE};
+
+/// 共享库 `ELF` 写出错误。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SharedElfWriteError {
+    /// `.text` 节不能为空。
+    EmptyText,
+    /// 共享库至少需要一个导出符号。
+    MissingExports,
+}
+
+impl fmt::Display for SharedElfWriteError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::EmptyText => write!(f, "`.text` 节不能为空"),
+            Self::MissingExports => write!(f, "共享库至少需要一个导出符号"),
+        }
+    }
+}
+
+impl std::error::Error for SharedElfWriteError {}
 
 const ET_DYN: u16 = 3;
 const EM_AARCH64: u16 = 183;
@@ -47,12 +67,12 @@ pub struct SharedElfWriter;
 
 impl SharedElfWriter {
     /// 写出最小可加载 `ET_DYN` `.so`（含 `.dynsym` 导出表）。
-    pub fn write_aarch64(image: &SharedElfImage, exports: &[SharedObjectExport]) -> Result<Vec<u8>> {
+    pub fn write_aarch64(image: &SharedElfImage, exports: &[SharedObjectExport]) -> Result<Vec<u8>, SharedElfWriteError> {
         if image.text.is_empty() {
-            return Err(miette!("`.text` 节不能为空"));
+            return Err(SharedElfWriteError::EmptyText);
         }
         if exports.is_empty() {
-            return Err(miette!("共享库至少需要一个导出符号"));
+            return Err(SharedElfWriteError::MissingExports);
         }
 
         let text_len = align_up(image.text.len() as u32, 16);
@@ -237,28 +257,5 @@ fn align_up(value: u32, alignment: u32) -> u32 {
 fn pad_to(out: &mut Vec<u8>, offset: usize) {
     while out.len() < offset {
         out.push(0);
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::elf::parse_elf64;
-
-    #[test]
-    fn writes_et_dyn_aarch64_with_export() {
-        let text = vec![0xC0, 0x03, 0x5F, 0xD6];
-        let image = SharedElfImage { text, rodata: Vec::new(), bss: Vec::new() };
-        let exports = vec![
-            SharedObjectExport { name: "asgard_invoke_export".into(), text_offset: 0 },
-            SharedObjectExport { name: "awsl_call_on_tap".into(), text_offset: 0 },
-        ];
-        let bytes = SharedElfWriter::write_aarch64(&image, &exports).expect("write");
-        let header = parse_elf64(&bytes).expect("parse");
-        assert_eq!(header.file_type, ET_DYN);
-        assert_eq!(header.machine, EM_AARCH64);
-        let haystack = String::from_utf8_lossy(&bytes);
-        assert!(haystack.contains("asgard_invoke_export"));
-        assert!(haystack.contains("awsl_call_on_tap"));
     }
 }

@@ -9,7 +9,6 @@
 //! 分支指令使用两遍编码：第一遍计算每条指令的偏移量，第二遍解析分支目标为相对偏移。
 
 use super::{MsilInstruction, MsilInstructionOperand, MsilMethodBody, MsilOpcode};
-use miette::{Diagnostic, Severity};
 use std::{collections::HashMap, fmt};
 
 /// 方法体编码错误。
@@ -34,24 +33,6 @@ impl fmt::Display for MethodBodyError {
 }
 
 impl std::error::Error for MethodBodyError {}
-
-impl Diagnostic for MethodBodyError {
-    fn code<'a>(&'a self) -> Option<Box<dyn fmt::Display + 'a>> {
-        Some(Box::new(match self {
-            Self::UnsupportedOperand(_) => "legion::clr::method_body::unsupported_operand",
-            Self::OperandMismatch(_) => "legion::clr::method_body::operand_mismatch",
-            Self::UndefinedLabel(_) => "legion::clr::method_body::undefined_label",
-        }))
-    }
-
-    fn severity(&self) -> Option<Severity> {
-        Some(Severity::Error)
-    }
-
-    fn help<'a>(&'a self) -> Option<Box<dyn fmt::Display + 'a>> {
-        Some(Box::new("请检查 `MSIL` 指令与操作数是否匹配，或先完成对应操作数的编码实现"))
-    }
-}
 
 /// 方法体编码器。
 pub struct MethodBodyEncoder;

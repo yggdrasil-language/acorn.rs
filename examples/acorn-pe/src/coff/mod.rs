@@ -1,5 +1,44 @@
-use miette::{Result, miette};
+use std::fmt;
+
 use serde::{Deserialize, Serialize};
+
+/// `COFF` 写出错误。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CoffWriteError {
+    /// 节数量超过 `u16` 上限。
+    SectionCountOverflow,
+    /// 符号数量超过 `u32` 上限。
+    SymbolCountOverflow,
+    /// 文件偏移超过 32 位范围。
+    OffsetOverflow,
+    /// 节数据过大。
+    SectionDataTooLarge,
+    /// 重定位项过多。
+    RelocationCountOverflow,
+    /// 重定位引用了未知符号。
+    UnknownRelocationSymbol(String),
+    /// 字符串表过大。
+    StringTableTooLarge,
+    /// 机器类型不能为 `Unknown`。
+    UnknownMachine,
+}
+
+impl fmt::Display for CoffWriteError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::SectionCountOverflow => write!(f, "节数量超过 `COFF` 上限"),
+            Self::SymbolCountOverflow => write!(f, "符号数量超过 `COFF` 上限"),
+            Self::OffsetOverflow => write!(f, "`COFF` 偏移超过 32 位范围"),
+            Self::SectionDataTooLarge => write!(f, "节数据过大"),
+            Self::RelocationCountOverflow => write!(f, "重定位项过多"),
+            Self::UnknownRelocationSymbol(name) => write!(f, "重定位引用未知符号 `{name}`"),
+            Self::StringTableTooLarge => write!(f, "`COFF` 字符串表过大"),
+            Self::UnknownMachine => write!(f, "`COFF` 机器类型不能为 `Unknown`"),
+        }
+    }
+}
+
+impl std::error::Error for CoffWriteError {}
 
 /// 与宿主目标架构对应的 `COFF` 机器选择输入。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -141,9 +180,9 @@ pub struct CoffObjectWriter;
 
 impl CoffObjectWriter {
     /// 将 `COFF` 对象编码为字节流。
-    pub fn write(object: &CoffObject) -> Result<Vec<u8>> {
-        let section_count = u16::try_from(object.sections.len()).map_err(|_| miette!("节数量超过 `COFF` 上限"))?;
-        let symbol_count = u32::try_from(object.symbols.len()).map_err(|_| miette!("符号数量超过 `COFF` 上限"))?;
+    pub fn write(object: &CoffObject) -> Result<Vec<u8>, CoffWriteError> {
+        let section_count = u16::try_from(object.sections.len()).map_err(|_| CoffWriteError::SectionCountOverflow)?;
+        let symbol_count = u32::try_from(object.symbols.len()).map_err(|_| CoffWriteError::SymbolCountOverflow)?;
         let header_size = 20usize;
         let section_headers_size = object.sections.len() * 40usize;
         let mut raw_data_offset = header_size + section_headers_size;
@@ -151,13 +190,13 @@ impl CoffObjectWriter {
         let mut section_reloc_offsets = Vec::with_capacity(object.sections.len());
 
         for section in &object.sections {
-            section_reloc_offsets.push(u32::try_from(raw_data_offset).map_err(|_| miette!("`COFF` 重定位偏移超过 32 位范围"))?);
+            section_reloc_offsets.push(u32::try_from(raw_data_offset).map_err(|_| CoffWriteError::OffsetOverflow)?);
             raw_data_offset += section.relocations.len() * 10;
-            section_raw_offsets.push(u32::try_from(raw_data_offset).map_err(|_| miette!("`COFF` 偏移超过 32 位范围"))?);
+            section_raw_offsets.push(u32::try_from(raw_data_offset).map_err(|_| CoffWriteError::OffsetOverflow)?);
             raw_data_offset += section.data.len();
         }
 
-        let symbol_table_offset = u32::try_from(raw_data_offset).map_err(|_| miette!("符号表偏移超过 32 位范围"))?;
+        let symbol_table_offset = u32::try_from(raw_data_offset).map_err(|_| CoffWriteError::OffsetOverflow)?;
         let symbol_name_to_index = build_symbol_index_map(object);
         let mut bytes = Vec::new();
         let mut string_table = CoffStringTable::new();
@@ -174,10 +213,14 @@ impl CoffObjectWriter {
             encode_name(&section.name, &mut bytes, &mut string_table)?;
             bytes.extend_from_slice(&0u32.to_le_bytes());
             bytes.extend_from_slice(&0u32.to_le_bytes());
-            bytes.extend_from_slice(&(u32::try_from(section.data.len()).map_err(|_| miette!("节数据过大"))?).to_le_bytes());
+            bytes.extend_from_slice(
+                &(u32::try_from(section.data.len()).map_err(|_| CoffWriteError::SectionDataTooLarge)?).to_le_bytes(),
+            );
             bytes.extend_from_slice(&section_raw_offsets[index].to_le_bytes());
             bytes.extend_from_slice(&section_reloc_offsets[index].to_le_bytes());
-            bytes.extend_from_slice(&(u16::try_from(section.relocations.len()).map_err(|_| miette!("重定位项过多"))?).to_le_bytes());
+            bytes.extend_from_slice(
+                &(u16::try_from(section.relocations.len()).map_err(|_| CoffWriteError::RelocationCountOverflow)?).to_le_bytes(),
+            );
             bytes.extend_from_slice(&0u16.to_le_bytes());
             bytes.extend_from_slice(&section.characteristics.to_le_bytes());
         }
@@ -186,7 +229,7 @@ impl CoffObjectWriter {
             for relocation in &section.relocations {
                 let symbol_index = *symbol_name_to_index
                     .get(&relocation.symbol_name)
-                    .ok_or_else(|| miette!("重定位引用未知符号 `{}`", relocation.symbol_name))?;
+                    .ok_or_else(|| CoffWriteError::UnknownRelocationSymbol(relocation.symbol_name.clone()))?;
                 bytes.extend_from_slice(&relocation.offset.to_le_bytes());
                 bytes.extend_from_slice(&symbol_index.to_le_bytes());
                 bytes.extend_from_slice(&relocation.kind.amd64_type().to_le_bytes());
@@ -222,15 +265,15 @@ impl CoffStringTable {
         Self { bytes: Vec::new() }
     }
 
-    fn intern(&mut self, value: &str) -> Result<u32> {
-        let offset = u32::try_from(self.bytes.len() + 4).map_err(|_| miette!("`COFF` 字符串表过大"))?;
+    fn intern(&mut self, value: &str) -> Result<u32, CoffWriteError> {
+        let offset = u32::try_from(self.bytes.len() + 4).map_err(|_| CoffWriteError::StringTableTooLarge)?;
         self.bytes.extend_from_slice(value.as_bytes());
         self.bytes.push(0);
         Ok(offset)
     }
 
-    fn to_bytes(&self) -> Result<Vec<u8>> {
-        let total_size = u32::try_from(self.bytes.len() + 4).map_err(|_| miette!("`COFF` 字符串表过大"))?;
+    fn to_bytes(&self) -> Result<Vec<u8>, CoffWriteError> {
+        let total_size = u32::try_from(self.bytes.len() + 4).map_err(|_| CoffWriteError::StringTableTooLarge)?;
         let mut out = Vec::with_capacity(self.bytes.len() + 4);
         out.extend_from_slice(&total_size.to_le_bytes());
         out.extend_from_slice(&self.bytes);
@@ -238,16 +281,16 @@ impl CoffStringTable {
     }
 }
 
-fn machine_to_u16(machine: CoffMachine) -> Result<u16> {
+fn machine_to_u16(machine: CoffMachine) -> Result<u16, CoffWriteError> {
     match machine {
-        CoffMachine::Unknown => Err(miette!("`COFF` 机器类型不能为 `Unknown`")),
+        CoffMachine::Unknown => Err(CoffWriteError::UnknownMachine),
         CoffMachine::I386 => Ok(0x014C),
         CoffMachine::Amd64 => Ok(0x8664),
         CoffMachine::Arm64 => Ok(0xAA64),
     }
 }
 
-fn encode_name(name: &str, out: &mut Vec<u8>, string_table: &mut CoffStringTable) -> Result<()> {
+fn encode_name(name: &str, out: &mut Vec<u8>, string_table: &mut CoffStringTable) -> Result<(), CoffWriteError> {
     if name.len() <= 8 && name.is_ascii() {
         let mut bytes = [0u8; 8];
         bytes[..name.len()].copy_from_slice(name.as_bytes());
@@ -274,28 +317,5 @@ pub fn coff_object_from_sections(machine: CoffMachine, sections: Vec<CoffSection
         object_kind: CoffObjectKind::ObjectFile,
         sections,
         symbols,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn writes_section_relocations() {
-        let object = CoffObject {
-            header: CoffHeader { machine: CoffMachine::Amd64, section_count: 1, symbol_table_offset: 0, symbol_count: 1, characteristics: 0 },
-            object_kind: CoffObjectKind::ObjectFile,
-            sections: vec![CoffSection {
-                name: ".text".to_string(),
-                data: vec![0x31, 0xC0, 0xC3],
-                relocations: vec![CoffRelocation { offset: 0, symbol_name: "main".to_string(), kind: CoffRelocationKind::Rel32 }],
-                characteristics: 0x6000_0020,
-            }],
-            symbols: vec![CoffSymbol { name: "main".to_string(), section_index: 1, value: 0, storage_class: 2 }],
-        };
-        let bytes = CoffObjectWriter::write(&object).expect("write coff");
-        assert!(bytes.len() > 40);
-        assert_eq!(u16::from_le_bytes([bytes[0], bytes[1]]), 0x8664);
     }
 }
