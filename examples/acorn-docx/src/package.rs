@@ -1,24 +1,51 @@
 use acorn_core::ParseBudget;
 use acorn_source::{ByteSource, MemorySource};
-use acorn_zip::{
-    index_zip_bytes, read_member_payload, ZipArchiveIndex, ZipIndexError, ZipMember, ZipViewError,
-};
+use acorn_zip::{ZipArchiveIndex, ZipIndexError, ZipMember, ZipViewError, index_zip_bytes, read_member_payload};
 
 /// Errors opening or reading an OPC package.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OpcError {
     /// Underlying ZIP index failed.
-    #[error("zip index error: {0}")]
-    Zip(#[from] ZipIndexError),
+    Zip(ZipIndexError),
     /// Member decode failed.
-    #[error("zip view error: {0}")]
-    View(#[from] ZipViewError),
+    View(ZipViewError),
     /// Part path was not found in the package.
-    #[error("opc part not found: {0}")]
     PartNotFound(String),
     /// OPC XML could not be parsed.
-    #[error("opc parse error: {0}")]
     Parse(String),
+}
+
+impl std::fmt::Display for OpcError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Zip(error) => write!(f, "zip index error: {error}"),
+            Self::View(error) => write!(f, "zip view error: {error}"),
+            Self::PartNotFound(path) => write!(f, "opc part not found: {path}"),
+            Self::Parse(message) => write!(f, "opc parse error: {message}"),
+        }
+    }
+}
+
+impl std::error::Error for OpcError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Zip(error) => Some(error),
+            Self::View(error) => Some(error),
+            _ => None,
+        }
+    }
+}
+
+impl From<ZipIndexError> for OpcError {
+    fn from(error: ZipIndexError) -> Self {
+        Self::Zip(error)
+    }
+}
+
+impl From<ZipViewError> for OpcError {
+    fn from(error: ZipViewError) -> Self {
+        Self::View(error)
+    }
 }
 
 /// Open Packaging Conventions package backed by a ZIP archive.
@@ -44,18 +71,13 @@ impl OpcPackage {
     /// Returns a member for a normalized OPC part path.
     pub fn part(&self, path: &str) -> Option<&ZipMember> {
         let normalized = normalize_part_path(path);
-        self.zip
-            .members
-            .iter()
-            .find(|member| member.path == normalized)
+        self.zip.members.iter().find(|member| member.path == normalized)
     }
 
     /// Reads and decodes a package part into memory.
     pub fn read_part(&self, path: &str, budget: &ParseBudget) -> Result<Vec<u8>, OpcError> {
         let normalized = normalize_part_path(path);
-        let member = self
-            .part(&normalized)
-            .ok_or_else(|| OpcError::PartNotFound(normalized))?;
+        let member = self.part(&normalized).ok_or_else(|| OpcError::PartNotFound(normalized))?;
         read_member_payload(self.source.clone(), member, budget).map_err(OpcError::from)
     }
 

@@ -1,6 +1,4 @@
-use crate::xml::{
-    attribute_value, document_root, elements_by_local_name, parse_xml_bytes,
-};
+use crate::xml::{attribute_value, document_root, elements_by_local_name, parse_xml_bytes};
 
 /// One `rootfile` entry from `META-INF/container.xml`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -18,10 +16,7 @@ pub fn parse_container_xml(xml: &[u8]) -> Result<Vec<ContainerRootFile>, String>
         .filter_map(|element| {
             let full_path = attribute_value(element, "full-path")?;
             let media_type = attribute_value(element, "media-type").unwrap_or_default();
-            Some(ContainerRootFile {
-                full_path,
-                media_type,
-            })
+            Some(ContainerRootFile { full_path, media_type })
         })
         .collect::<Vec<_>>();
 

@@ -1,29 +1,58 @@
 use acorn_core::ParseBudget;
 use acorn_source::{ByteSource, MemorySource};
-use acorn_zip::{
-    index_zip_bytes, read_member_payload, ZipArchiveIndex, ZipIndexError, ZipMember, ZipViewError,
-};
+use acorn_zip::{ZipArchiveIndex, ZipIndexError, ZipMember, ZipViewError, index_zip_bytes, read_member_payload};
 
-use crate::container::{parse_container_xml, ContainerRootFile};
-use crate::opf::{parse_opf_xml, OpfDocument};
+use crate::{
+    container::{ContainerRootFile, parse_container_xml},
+    opf::{OpfDocument, parse_opf_xml},
+};
 
 const CONTAINER_XML: &str = "META-INF/container.xml";
 
 /// Errors opening or reading an EPUB OCF package.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OcfError {
     /// Underlying ZIP index failed.
-    #[error("zip index error: {0}")]
-    Zip(#[from] ZipIndexError),
+    Zip(ZipIndexError),
     /// Member decode failed.
-    #[error("zip view error: {0}")]
-    View(#[from] ZipViewError),
+    View(ZipViewError),
     /// Package member was not found.
-    #[error("ocf member not found: {0}")]
     MemberNotFound(String),
     /// Container or OPF XML could not be parsed.
-    #[error("ocf parse error: {0}")]
     Parse(String),
+}
+
+impl std::fmt::Display for OcfError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Zip(error) => write!(f, "zip index error: {error}"),
+            Self::View(error) => write!(f, "zip view error: {error}"),
+            Self::MemberNotFound(path) => write!(f, "ocf member not found: {path}"),
+            Self::Parse(message) => write!(f, "ocf parse error: {message}"),
+        }
+    }
+}
+
+impl std::error::Error for OcfError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Zip(error) => Some(error),
+            Self::View(error) => Some(error),
+            _ => None,
+        }
+    }
+}
+
+impl From<ZipIndexError> for OcfError {
+    fn from(error: ZipIndexError) -> Self {
+        Self::Zip(error)
+    }
+}
+
+impl From<ZipViewError> for OcfError {
+    fn from(error: ZipViewError) -> Self {
+        Self::View(error)
+    }
 }
 
 /// EPUB OCF package backed by a ZIP archive.
@@ -48,11 +77,7 @@ impl OcfPackage {
             .cloned()
             .or_else(|| rootfiles.first().cloned())
             .ok_or_else(|| OcfError::Parse("container.xml has no rootfile".into()))?;
-        Ok(Self {
-            source,
-            zip,
-            rootfile,
-        })
+        Ok(Self { source, zip, rootfile })
     }
 
     /// Root OPF path from `META-INF/container.xml`.
@@ -68,10 +93,7 @@ impl OcfPackage {
     /// Returns a member for a normalized package path.
     pub fn member(&self, path: &str) -> Option<&ZipMember> {
         let normalized = normalize_member_path(path);
-        self.zip
-            .members
-            .iter()
-            .find(|member| member.path == normalized)
+        self.zip.members.iter().find(|member| member.path == normalized)
     }
 
     /// Reads and decodes a package member into memory.
@@ -93,11 +115,7 @@ impl OcfPackage {
     /// Resolves a manifest `href` relative to the OPF directory.
     pub fn resolve_href(opf_path: &str, href: &str) -> String {
         let base = opf_path.rsplit_once('/').map(|(dir, _)| dir).unwrap_or("");
-        let joined = if base.is_empty() {
-            href.to_string()
-        } else {
-            format!("{}/{}", base, href)
-        };
+        let joined = if base.is_empty() { href.to_string() } else { format!("{}/{}", base, href) };
         normalize_member_path(&joined)
     }
 }
@@ -115,11 +133,8 @@ fn read_member_bytes(
     budget: &ParseBudget,
 ) -> Result<Vec<u8>, OcfError> {
     let normalized = normalize_member_path(path);
-    let member = zip
-        .members
-        .iter()
-        .find(|member| member.path == normalized)
-        .ok_or_else(|| OcfError::MemberNotFound(normalized))?;
+    let member =
+        zip.members.iter().find(|member| member.path == normalized).ok_or_else(|| OcfError::MemberNotFound(normalized))?;
     read_member_payload(source.clone(), member, budget).map_err(OcfError::from)
 }
 

@@ -18,37 +18,22 @@ pub fn element_is(element: &XmlElement, expected: &str) -> bool {
 
 /// Reads an attribute by local name.
 pub fn attribute_value(element: &XmlElement, expected: &str) -> Option<String> {
-    element
-        .attributes
-        .iter()
-        .find(|attr| local_name(&attr.name) == expected)
-        .map(|attr| attr.value.clone())
+    element.attributes.iter().find(|attr| local_name(&attr.name) == expected).map(|attr| attr.value.clone())
 }
 
 /// Returns the first direct child element with the given local tag name.
 pub fn child_element<'a>(element: &'a XmlElement, expected: &str) -> Option<&'a XmlElement> {
-    element
-        .children
-        .iter()
-        .filter_map(XmlValue::as_element)
-        .find(|child| element_is(child, expected))
+    element.children.iter().filter_map(XmlValue::as_element).find(|child| element_is(child, expected))
 }
 
 /// Collects descendant elements whose local tag name matches `expected`.
-pub fn elements_by_local_name<'a>(
-    element: &'a XmlElement,
-    expected: &str,
-) -> Vec<&'a XmlElement> {
+pub fn elements_by_local_name<'a>(element: &'a XmlElement, expected: &str) -> Vec<&'a XmlElement> {
     let mut matches = Vec::new();
     collect_elements_by_local_name(element, expected, &mut matches);
     matches
 }
 
-fn collect_elements_by_local_name<'a>(
-    element: &'a XmlElement,
-    expected: &str,
-    matches: &mut Vec<&'a XmlElement>,
-) {
+fn collect_elements_by_local_name<'a>(element: &'a XmlElement, expected: &str, matches: &mut Vec<&'a XmlElement>) {
     if element_is(element, expected) {
         matches.push(element);
     }
@@ -74,7 +59,8 @@ fn collect_element_text(element: &XmlElement, out: &mut String) {
                 for value in values {
                     if let XmlValue::Text(text) = value {
                         out.push_str(text);
-                    } else if let XmlValue::Element(child) = value {
+                    }
+                    else if let XmlValue::Element(child) = value {
                         collect_element_text(child, out);
                     }
                 }
@@ -88,36 +74,9 @@ fn collect_element_text(element: &XmlElement, out: &mut String) {
 pub fn document_root(value: &XmlValue) -> Result<&XmlElement, String> {
     match value {
         XmlValue::Element(element) => Ok(element),
-        XmlValue::Fragment(values) => values
-            .iter()
-            .find_map(XmlValue::as_element)
-            .ok_or_else(|| "xml fragment has no root element".into()),
+        XmlValue::Fragment(values) => {
+            values.iter().find_map(XmlValue::as_element).ok_or_else(|| "xml fragment has no root element".into())
+        }
         _ => Err("xml has no root element".into()),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{
-        attribute_value, document_root, element_is, elements_by_local_name, parse_xml_bytes,
-    };
-
-    #[test]
-    fn parses_epub_container_fixture() {
-        let xml = br#"<?xml version="1.0" encoding="UTF-8"?>
-<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
-  <rootfiles>
-    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
-  </rootfiles>
-</container>"#;
-        let value = parse_xml_bytes(xml).expect("epub container");
-        let document = document_root(&value).expect("root element");
-        assert!(element_is(document, "container"));
-        let rootfiles = elements_by_local_name(document, "rootfile");
-        assert_eq!(rootfiles.len(), 1);
-        assert_eq!(
-            attribute_value(rootfiles[0], "full-path").as_deref(),
-            Some("OEBPS/content.opf")
-        );
     }
 }

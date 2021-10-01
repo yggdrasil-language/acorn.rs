@@ -18,28 +18,17 @@ pub fn element_is(element: &XmlElement, expected: &str) -> bool {
 
 /// Reads an attribute by local name.
 pub fn attribute_value(element: &XmlElement, expected: &str) -> Option<String> {
-    element
-        .attributes
-        .iter()
-        .find(|attr| local_name(&attr.name) == expected)
-        .map(|attr| attr.value.clone())
+    element.attributes.iter().find(|attr| local_name(&attr.name) == expected).map(|attr| attr.value.clone())
 }
 
 /// Collects descendant elements whose local tag name matches `expected`.
-pub fn elements_by_local_name<'a>(
-    element: &'a XmlElement,
-    expected: &str,
-) -> Vec<&'a XmlElement> {
+pub fn elements_by_local_name<'a>(element: &'a XmlElement, expected: &str) -> Vec<&'a XmlElement> {
     let mut matches = Vec::new();
     collect_elements_by_local_name(element, expected, &mut matches);
     matches
 }
 
-fn collect_elements_by_local_name<'a>(
-    element: &'a XmlElement,
-    expected: &str,
-    matches: &mut Vec<&'a XmlElement>,
-) {
+fn collect_elements_by_local_name<'a>(element: &'a XmlElement, expected: &str, matches: &mut Vec<&'a XmlElement>) {
     if element_is(element, expected) {
         matches.push(element);
     }
@@ -52,10 +41,9 @@ fn collect_elements_by_local_name<'a>(
 pub fn document_root(value: &XmlValue) -> Result<&XmlElement, String> {
     match value {
         XmlValue::Element(element) => Ok(element),
-        XmlValue::Fragment(values) => values
-            .iter()
-            .find_map(XmlValue::as_element)
-            .ok_or_else(|| "xml fragment has no root element".to_string()),
+        XmlValue::Fragment(values) => {
+            values.iter().find_map(XmlValue::as_element).ok_or_else(|| "xml fragment has no root element".to_string())
+        }
         _ => Err("xml has no root element".to_string()),
     }
 }

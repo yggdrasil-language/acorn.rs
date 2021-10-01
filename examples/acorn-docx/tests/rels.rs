@@ -1,5 +1,5 @@
 use acorn_core::ParseBudget;
-use acorn_docx::{parse_relationship_targets, resolve_opc_target, OpcPackage};
+use acorn_docx::{OpcPackage, parse_relationship_targets, resolve_opc_target};
 
 fn stored_zip(entries: &[(&str, &[u8])]) -> Vec<u8> {
     let mut archive = Vec::new();
@@ -26,7 +26,8 @@ fn stored_zip(entries: &[(&str, &[u8])]) -> Vec<u8> {
     let cd_offset = archive.len() as u32;
     for (name, crc, size, local_offset) in locals {
         archive.extend_from_slice(b"PK\x01\x02");
-        let mut cd_fixed = [0u8; 46];
+        // 42 bytes after signature (APPNOTE total fixed = 46).
+        let mut cd_fixed = [0u8; 42];
         cd_fixed[0..2].copy_from_slice(&[0x14, 0x00]);
         cd_fixed[2..4].copy_from_slice(&[0x14, 0x00]);
         cd_fixed[12..16].copy_from_slice(&crc.to_le_bytes());
@@ -77,70 +78,40 @@ const DOCUMENT_RELS: &[u8] = br#"<?xml version="1.0" encoding="UTF-8" standalone
 
 #[test]
 fn resolves_opc_targets_relative_to_source_part() {
-    assert_eq!(
-        resolve_opc_target("word/document.xml", "media/image1.png"),
-        "word/media/image1.png"
-    );
-    assert_eq!(
-        resolve_opc_target("", "word/document.xml"),
-        "word/document.xml"
-    );
-    assert_eq!(
-        resolve_opc_target("word/document.xml", "/custom.xml"),
-        "custom.xml"
-    );
+    assert_eq!(resolve_opc_target("word/document.xml", "media/image1.png"), "word/media/image1.png");
+    assert_eq!(resolve_opc_target("", "word/document.xml"), "word/document.xml");
+    assert_eq!(resolve_opc_target("word/document.xml", "/custom.xml"), "custom.xml");
 }
 
 #[test]
 fn resolves_main_document_part_from_root_relationships() {
-    let zip = stored_zip(&[
-        ("_rels/.rels", ROOT_RELS),
-        ("word/document.xml", b"<w:document/>"),
-    ]);
+    let zip = stored_zip(&[("_rels/.rels", ROOT_RELS), ("word/document.xml", b"<w:document/>")]);
     let pkg = OpcPackage::open("docx.zip", zip).expect("open");
-    let path = pkg
-        .main_document_part_path(&ParseBudget::default())
-        .expect("main");
+    let path = pkg.main_document_part_path(&ParseBudget::default()).expect("main");
     assert_eq!(path.as_deref(), Some("word/document.xml"));
 }
 
 #[test]
 fn parses_relationship_targets_from_xml() {
     let targets = parse_relationship_targets(DOCUMENT_RELS).expect("parse");
-    assert_eq!(
-        targets.get("rId1").map(String::as_str),
-        Some("https://example.com")
-    );
-    assert_eq!(
-        targets.get("rId2").map(String::as_str),
-        Some("media/image1.png")
-    );
+    assert_eq!(targets.get("rId1").map(String::as_str), Some("https://example.com"));
+    assert_eq!(targets.get("rId2").map(String::as_str), Some("media/image1.png"));
 }
 
 #[test]
 fn reads_document_relationships_from_package() {
-    let zip = stored_zip(&[
-        ("word/document.xml", b"<w:document/>"),
-        ("word/_rels/document.xml.rels", DOCUMENT_RELS),
-    ]);
+    let zip = stored_zip(&[("word/document.xml", b"<w:document/>"), ("word/_rels/document.xml.rels", DOCUMENT_RELS)]);
     let pkg = OpcPackage::open("docx.zip", zip).expect("open");
     let budget = ParseBudget::default();
-    let targets = pkg
-        .read_relationship_targets("word/_rels/document.xml.rels", &budget)
-        .expect("rels");
+    let targets = pkg.read_relationship_targets("word/_rels/document.xml.rels", &budget).expect("rels");
     assert_eq!(targets.len(), 2);
-    assert_eq!(
-        targets.get("rId2").map(String::as_str),
-        Some("media/image1.png")
-    );
+    assert_eq!(targets.get("rId2").map(String::as_str), Some("media/image1.png"));
 }
 
 #[test]
 fn missing_relationships_part_returns_empty_map() {
     let zip = stored_zip(&[("word/document.xml", b"<w:document/>")]);
     let pkg = OpcPackage::open("docx.zip", zip).expect("open");
-    let targets = pkg
-        .read_relationship_targets("word/_rels/document.xml.rels", &ParseBudget::default())
-        .expect("rels");
+    let targets = pkg.read_relationship_targets("word/_rels/document.xml.rels", &ParseBudget::default()).expect("rels");
     assert!(targets.is_empty());
 }

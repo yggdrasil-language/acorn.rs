@@ -21,7 +21,8 @@ fn stored_zip(entries: &[(&str, &[u8])]) -> Vec<u8> {
         archive.extend_from_slice(payload);
 
         central.extend_from_slice(b"PK\x01\x02");
-        let mut cd_fixed = [0u8; 46];
+        // 42 bytes after signature (APPNOTE total fixed = 46).
+        let mut cd_fixed = [0u8; 42];
         cd_fixed[0..2].copy_from_slice(&[0x14, 0x00]);
         cd_fixed[2..4].copy_from_slice(&[0x14, 0x00]);
         cd_fixed[12..16].copy_from_slice(&crc.to_le_bytes());
@@ -109,8 +110,6 @@ fn resolves_manifest_href_to_member() {
     let package = OcfPackage::open("book.epub", minimal_epub_zip()).expect("open epub");
     let path = OcfPackage::resolve_href(package.root_opf_path(), "chapter.xhtml");
     assert_eq!(path, "OEBPS/chapter.xhtml");
-    let bytes = package
-        .read_member(&path, &ParseBudget::default())
-        .expect("read chapter");
+    let bytes = package.read_member(&path, &ParseBudget::default()).expect("read chapter");
     assert!(bytes.windows(7).any(|window| window == b"Chapter"));
 }
