@@ -24,7 +24,13 @@ pub fn decode_instruction(opcode: u8, reader: &mut WasmByteReader, offset: usize
         0xFC => {
             let sub = reader.read_uleb128().unwrap_or(0);
             let mnemonic = fc_mnemonic(sub).unwrap_or("fc.unknown");
-            DecodedInstruction { offset, opcode, mnemonic: mnemonic.into(), operands: vec![DecodedOperand::SubOpcode(sub)], raw_size: 1 }
+            DecodedInstruction {
+                offset,
+                opcode,
+                mnemonic: mnemonic.into(),
+                operands: vec![DecodedOperand::SubOpcode(sub)],
+                raw_size: 1,
+            }
         }
         _ => {
             let mnemonic = opcode_mnemonic(opcode);

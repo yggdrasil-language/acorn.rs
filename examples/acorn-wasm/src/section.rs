@@ -8,8 +8,8 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
 use super::{
-    SECTION_CODE, SECTION_EXPORT, SECTION_IMPORT, SECTION_TYPE, WasmBinaryError, WasmBinaryModule, WasmByteReader, compute_section_offset,
-    skip_value_type,
+    SECTION_CODE, SECTION_EXPORT, SECTION_IMPORT, SECTION_TYPE, WasmBinaryError, WasmBinaryModule, WasmByteReader,
+    compute_section_offset, skip_value_type,
 };
 
 /// `WASM` 外部实体种类，用于 `import` / `export` 段条目。
@@ -115,7 +115,7 @@ impl WasmHeapType {
 /// `WASM` 值类型（valtype）。
 ///
 /// 覆盖单字节数值/引用类型、缩写引用类型（`anyref`）与 `wasm-gc` 多字节引用类型
-///（`0x63` / `0x64` + heap type）。
+/// （`0x63` / `0x64` + heap type）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum WasmValueType {
     /// `i32`（`0x7F`）。

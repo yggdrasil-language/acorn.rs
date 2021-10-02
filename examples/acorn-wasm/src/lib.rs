@@ -1,4 +1,5 @@
-#![doc = include_str!("readme.md")]
+#![warn(missing_docs)]
+#![doc = include_str!("../readme.md")]
 
 use std::fmt::{Display, Formatter};
 
@@ -25,19 +26,20 @@ pub use decode::decode_gc_instruction;
 pub use decode::decode_instruction;
 /// `WASM` 常用编码辅助。
 pub use encode::{
-    BLOCKTYPE_EMPTY, FIELD_IMMUTABLE, FIELD_MUTABLE, LIMITS_HAS_MAX, LIMITS_MIN_ONLY, OP_CALL, OP_CALL_INDIRECT, OP_DROP, OP_END, OP_I32_CONST,
-    OP_I32_LOAD, OP_LOCAL_SET, TYPE_FORM_ARRAY, TYPE_FORM_FUNC, TYPE_FORM_STRUCT, VALTYPE_ANYREF, VALTYPE_EXTERNREF, VALTYPE_F64,
-    VALTYPE_FUNCREF, VALTYPE_I32, VALTYPE_I64, VALTYPE_REF, VALTYPE_REF_NULL, encode_array_copy, encode_array_get, encode_array_len,
-    encode_array_new_default, encode_array_new_fixed, encode_array_set, encode_arraytype, encode_arraytype_raw, encode_block_empty, encode_br,
-    encode_br_if, encode_call, encode_call_indirect, encode_drop, encode_else, encode_end, encode_external_kind, encode_f64_const,
-    encode_f64_load, encode_f64_store, encode_functype, encode_functype_raw, encode_gc_op, encode_global_get, encode_global_set,
-    encode_heap_type, encode_i32_add, encode_i32_and, encode_i32_const, encode_i32_eqz, encode_i32_load, encode_i32_store, encode_i32_sub,
-    encode_i64_const, encode_i64_load, encode_i64_store, encode_if_empty, encode_local_decl, encode_local_get, encode_local_i32_decl,
-    encode_local_set, encode_local_tee, encode_loop_empty, encode_memarg, encode_memarg_immediates, encode_memory_copy, encode_memory_fill,
-    encode_memory_grow, encode_memory_size, encode_nop, encode_ref_cast_array, encode_ref_cast_type_index, encode_ref_is_null,
-    encode_ref_null_anyref, encode_ref_null_externref, encode_ref_null_valtype, encode_return, encode_sleb128_i64, encode_struct_get,
-    encode_struct_new_default, encode_struct_set, encode_structtype, encode_structtype_raw, encode_uleb128, encode_unreachable,
-    encode_value_type, write_sleb128_i32,
+    BLOCKTYPE_EMPTY, FIELD_IMMUTABLE, FIELD_MUTABLE, LIMITS_HAS_MAX, LIMITS_MIN_ONLY, OP_CALL, OP_CALL_INDIRECT, OP_DROP,
+    OP_END, OP_I32_CONST, OP_I32_LOAD, OP_LOCAL_SET, TYPE_FORM_ARRAY, TYPE_FORM_FUNC, TYPE_FORM_STRUCT, VALTYPE_ANYREF,
+    VALTYPE_EXTERNREF, VALTYPE_F64, VALTYPE_FUNCREF, VALTYPE_I32, VALTYPE_I64, VALTYPE_REF, VALTYPE_REF_NULL,
+    encode_array_copy, encode_array_get, encode_array_len, encode_array_new_default, encode_array_new_fixed, encode_array_set,
+    encode_arraytype, encode_arraytype_raw, encode_block_empty, encode_br, encode_br_if, encode_call, encode_call_indirect,
+    encode_drop, encode_else, encode_end, encode_external_kind, encode_f64_const, encode_f64_load, encode_f64_store,
+    encode_functype, encode_functype_raw, encode_gc_op, encode_global_get, encode_global_set, encode_heap_type, encode_i32_add,
+    encode_i32_and, encode_i32_const, encode_i32_eqz, encode_i32_load, encode_i32_store, encode_i32_sub, encode_i64_const,
+    encode_i64_load, encode_i64_store, encode_if_empty, encode_local_decl, encode_local_get, encode_local_i32_decl,
+    encode_local_set, encode_local_tee, encode_loop_empty, encode_memarg, encode_memarg_immediates, encode_memory_copy,
+    encode_memory_fill, encode_memory_grow, encode_memory_size, encode_nop, encode_ref_cast_array, encode_ref_cast_type_index,
+    encode_ref_is_null, encode_ref_null_anyref, encode_ref_null_externref, encode_ref_null_valtype, encode_return,
+    encode_sleb128_i64, encode_struct_get, encode_struct_new_default, encode_struct_set, encode_structtype,
+    encode_structtype_raw, encode_uleb128, encode_unreachable, encode_value_type, write_sleb128_i32,
 };
 /// 解码后的单条 `WASM` 指令。
 pub use instruction::DecodedInstruction;
@@ -187,7 +189,12 @@ impl WasmBinaryModule {
         self.sections
             .iter()
             .filter_map(|section| {
-                if section.id == 0 { section.name.clone().map(|name| WasmCustomSection { name, bytes: section.bytes.clone() }) } else { None }
+                if section.id == 0 {
+                    section.name.clone().map(|name| WasmCustomSection { name, bytes: section.bytes.clone() })
+                }
+                else {
+                    None
+                }
             })
             .collect()
     }
@@ -306,8 +313,12 @@ pub fn compute_section_offset(module: &WasmBinaryModule, target_id: u8) -> usize
     let mut offset = 8;
     for section in &module.sections {
         let id_field_size = 1;
-        let name_overhead =
-            if section.id == SECTION_CUSTOM { section.name.as_ref().map(|n| n.len() + uleb128_size(n.len() as u32)).unwrap_or(0) } else { 0 };
+        let name_overhead = if section.id == SECTION_CUSTOM {
+            section.name.as_ref().map(|n| n.len() + uleb128_size(n.len() as u32)).unwrap_or(0)
+        }
+        else {
+            0
+        };
         let payload_len = if section.id == SECTION_CUSTOM { name_overhead + section.bytes.len() } else { section.bytes.len() };
         let len_field_size = uleb128_size(payload_len as u32);
 
