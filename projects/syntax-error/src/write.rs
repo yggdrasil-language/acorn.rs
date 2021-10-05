@@ -2,8 +2,8 @@ use crate::{FileCache, FileID};
 use std::ops::Range;
 
 use super::{
-    draw::{self, StreamAwareFmt, StreamType},
     CharSet, Label, LabelAttach, Report, Show, Span, Write,
+    draw::{self, StreamAwareFmt, StreamType},
 };
 
 // A WARNING, FOR ALL YE WHO VENTURE IN HERE

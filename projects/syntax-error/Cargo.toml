@@ -1,20 +1,18 @@
 [package]
 name = "syntax-error"
-version = "0.0.4"
-authors = ["Aster <192607617@qq.com>"]
+version.workspace = true
+authors.workspace = true
 description = "Syntax error report"
 repository = "https://github.com/oovm/sub_projects"
 documentation = "https://docs.rs/syntax-error"
 readme = "readme.md"
-license = "MPL-2.0"
-edition = "2021"
+license.workspace = true
+edition.workspace = true
 exclude = ["package.json", "tests/**"]
 
 [dependencies]
-yansi = "1.0.1"
-unicode-width = "0.1.10"
-
-[dev-dependencies]
+yansi = { workspace = true }
+unicode-width = { workspace = true }
 
 [features]
 default = []
