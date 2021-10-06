@@ -3,13 +3,15 @@ use acorn_source::{ByteSource, MemorySource, ReadOutcome};
 
 use crate::{
     candidate::ProbeCandidate,
-    signature::{ProbeAnchor, Signature},
+    signature::{BytePattern, ProbeAnchor, Signature},
 };
 
 /// Limits for bounded signature search.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ProbeBudget {
+    /// Maximum bytes scanned inside a search window.
     pub max_scan_bytes: u64,
+    /// Maximum hits recorded for one signature.
     pub max_hits_per_signature: u32,
 }
 
@@ -129,6 +131,12 @@ pub fn document_container_signatures() -> Vec<Signature> {
     vec![
         Signature::at_start("zip", b"PK\x03\x04"),
         Signature::at_start("gzip", &[0x1F, 0x8B]),
+        Signature {
+            format_id: "zlib".into(),
+            anchor: ProbeAnchor::Start,
+            pattern: BytePattern { bytes: vec![0x08, 0x00], mask: vec![0x0F, 0x00] },
+            priority: 0,
+        },
         Signature::at_start("pdf", b"%PDF-"),
     ]
 }

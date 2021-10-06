@@ -1,0 +1,10 @@
+[package]
+name = "acorn-mach-o"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Apple Mach-O binary format encoding (Acorn domain)"
+repository = "https://github.com/yggdrasil-language/acorn.rs"
+
+[dependencies]

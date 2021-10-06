@@ -16,4 +16,4 @@ acorn-zip = { workspace = true }
 oak-xml = { workspace = true, default-features = false, features = ["serde"] }
 
 [dev-dependencies]
-flate2 = { workspace = true }
+acorn-codec = { workspace = true, features = ["compression"] }

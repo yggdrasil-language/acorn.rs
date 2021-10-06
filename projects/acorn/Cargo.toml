@@ -1,0 +1,25 @@
+[package]
+name = "acorn"
+version.workspace = true
+authors.workspace = true
+description = "Public facade for Acorn binary parsing and codec primitives."
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository = "https://github.com/yggdrasil-language/acorn.rs/tree/dev/projects/acorn"
+categories = ["parsing", "encoding"]
+keywords = ["binary", "parser", "codec"]
+publish = false
+
+[dependencies]
+acorn-core = { workspace = true }
+acorn-source = { workspace = true }
+acorn-codec = { workspace = true }
+acorn-probe = { workspace = true }
+
+[features]
+default = []
+compression = ["acorn-codec/compression"]
+
+[package.metadata.docs.rs]
+all-features = true

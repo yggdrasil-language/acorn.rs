@@ -1,0 +1,10 @@
+[package]
+name = "acorn-tvm"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "TextVM `.tvm` regex engine artifact format (Acorn domain)"
+repository = "https://github.com/yggdrasil-language/acorn.rs"
+
+[dependencies]

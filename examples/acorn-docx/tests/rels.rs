@@ -1,4 +1,4 @@
-use acorn_core::ParseBudget;
+use acorn_core::Budget;
 use acorn_docx::{OpcPackage, parse_relationship_targets, resolve_opc_target};
 
 fn stored_zip(entries: &[(&str, &[u8])]) -> Vec<u8> {
@@ -87,7 +87,7 @@ fn resolves_opc_targets_relative_to_source_part() {
 fn resolves_main_document_part_from_root_relationships() {
     let zip = stored_zip(&[("_rels/.rels", ROOT_RELS), ("word/document.xml", b"<w:document/>")]);
     let pkg = OpcPackage::open("docx.zip", zip).expect("open");
-    let path = pkg.main_document_part_path(&ParseBudget::default()).expect("main");
+    let path = pkg.main_document_part_path(&Budget::default()).expect("main");
     assert_eq!(path.as_deref(), Some("word/document.xml"));
 }
 
@@ -102,7 +102,7 @@ fn parses_relationship_targets_from_xml() {
 fn reads_document_relationships_from_package() {
     let zip = stored_zip(&[("word/document.xml", b"<w:document/>"), ("word/_rels/document.xml.rels", DOCUMENT_RELS)]);
     let pkg = OpcPackage::open("docx.zip", zip).expect("open");
-    let budget = ParseBudget::default();
+    let budget = Budget::default();
     let targets = pkg.read_relationship_targets("word/_rels/document.xml.rels", &budget).expect("rels");
     assert_eq!(targets.len(), 2);
     assert_eq!(targets.get("rId2").map(String::as_str), Some("media/image1.png"));
@@ -112,6 +112,6 @@ fn reads_document_relationships_from_package() {
 fn missing_relationships_part_returns_empty_map() {
     let zip = stored_zip(&[("word/document.xml", b"<w:document/>")]);
     let pkg = OpcPackage::open("docx.zip", zip).expect("open");
-    let targets = pkg.read_relationship_targets("word/_rels/document.xml.rels", &ParseBudget::default()).expect("rels");
+    let targets = pkg.read_relationship_targets("word/_rels/document.xml.rels", &Budget::default()).expect("rels");
     assert!(targets.is_empty());
 }

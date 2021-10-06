@@ -14,7 +14,7 @@ pub use clr::{
         read_idx, read_u32_table,
     },
 };
-pub use native::{NativeDllImport, NativePeImage, NativePeWriter};
+pub use native::{IMAGE_BASE_X64, NativeDllImport, NativePeImage, NativePeWriter, NativeSectionLayout};
 pub use read::{
     CliHeader, CoffHeader as PeCoffHeader, DataDirectory, DosHeader, MetadataRoot, OptionalHeader, Pe64Header, Pe64ParseError,
     PeImage, PeParseError, SectionHeader, StreamHeader, TableKind, extract_pe_section, parse_pe, parse_pe64, read_blob,

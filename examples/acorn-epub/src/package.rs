@@ -1,4 +1,4 @@
-use acorn_core::ParseBudget;
+use acorn_core::Budget;
 use acorn_source::{ByteSource, MemorySource};
 use acorn_zip::{ZipArchiveIndex, ZipIndexError, ZipMember, ZipViewError, index_zip_bytes, read_member_payload};
 
@@ -68,7 +68,7 @@ impl OcfPackage {
     pub fn open(label: impl Into<String>, bytes: Vec<u8>) -> Result<Self, OcfError> {
         let source = MemorySource::from_bytes(label, bytes);
         let zip = index_zip_bytes("ocf-bytes", read_all(&source)?)?;
-        let budget = ParseBudget::default();
+        let budget = Budget::default();
         let container_xml = read_member_bytes(&source, &zip, CONTAINER_XML, &budget)?;
         let rootfiles = parse_container_xml(&container_xml).map_err(OcfError::Parse)?;
         let rootfile = rootfiles
@@ -97,12 +97,12 @@ impl OcfPackage {
     }
 
     /// Reads and decodes a package member into memory.
-    pub fn read_member(&self, path: &str, budget: &ParseBudget) -> Result<Vec<u8>, OcfError> {
+    pub fn read_member(&self, path: &str, budget: &Budget) -> Result<Vec<u8>, OcfError> {
         read_member_bytes(&self.source, &self.zip, path, budget)
     }
 
     /// Parses the root OPF document.
-    pub fn read_opf(&self, budget: &ParseBudget) -> Result<OpfDocument, OcfError> {
+    pub fn read_opf(&self, budget: &Budget) -> Result<OpfDocument, OcfError> {
         let xml = self.read_member(self.root_opf_path(), budget)?;
         parse_opf_xml(self.root_opf_path(), &xml).map_err(OcfError::Parse)
     }
@@ -126,12 +126,7 @@ pub fn normalize_member_path(path: &str) -> String {
     trimmed.trim_start_matches('/').to_string()
 }
 
-fn read_member_bytes(
-    source: &MemorySource,
-    zip: &ZipArchiveIndex,
-    path: &str,
-    budget: &ParseBudget,
-) -> Result<Vec<u8>, OcfError> {
+fn read_member_bytes(source: &MemorySource, zip: &ZipArchiveIndex, path: &str, budget: &Budget) -> Result<Vec<u8>, OcfError> {
     let normalized = normalize_member_path(path);
     let member =
         zip.members.iter().find(|member| member.path == normalized).ok_or_else(|| OcfError::MemberNotFound(normalized))?;

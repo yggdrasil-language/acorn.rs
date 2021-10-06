@@ -5,7 +5,7 @@ use std::{
     io,
 };
 
-use acorn_core::ParseBudget;
+use acorn_core::Budget;
 use acorn_source::{ByteSource, MemorySource, ReadOutcome};
 use acorn_zip::{ZipIndexError, ZipViewError, decode_member, index_zip_bytes};
 use serde::{Deserialize, Serialize};
@@ -145,7 +145,7 @@ impl JvmJarPackage {
         let owned = bytes.to_vec();
         let index = index_zip_bytes("jar", owned.clone())?;
         let mut package = Self::new(file_name);
-        let budget = ParseBudget::default();
+        let budget = Budget::default();
         for member in &index.members {
             if member.path.ends_with('/') {
                 continue;

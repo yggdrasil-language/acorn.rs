@@ -1,0 +1,11 @@
+[package]
+name = "acorn-dex"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Android DEX (dex/035) binary format encoding (Acorn domain)"
+repository = "https://github.com/yggdrasil-language/acorn.rs"
+
+[dependencies]
+acorn-jvm = { workspace = true }

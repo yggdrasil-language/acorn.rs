@@ -1,0 +1,15 @@
+[package]
+name = "acorn-x64"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "x86-64 instruction encoding and native PE/ELF executable images (Acorn domain)"
+repository = "https://github.com/yggdrasil-language/acorn.rs"
+
+[dependencies]
+acorn-pe = { workspace = true }
+serde = { workspace = true, optional = true }
+
+[features]
+serde = ["dep:serde"]

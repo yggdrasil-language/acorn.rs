@@ -47,4 +47,5 @@ pub(crate) fn align_up(value: u32, alignment: u32) -> u32 {
 
 pub(crate) const FILE_ALIGNMENT: u32 = 0x200;
 pub(crate) const SECTION_ALIGNMENT: u32 = 0x1000;
-pub(crate) const IMAGE_BASE_X64: u64 = 0x0000_1400_0000;
+/// 原生 `PE32+` 默认镜像基址（写成绝对地址的指针槽需要它）。
+pub const IMAGE_BASE_X64: u64 = 0x0000_1400_0000;
