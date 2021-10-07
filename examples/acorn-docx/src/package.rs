@@ -1,6 +1,6 @@
-use acorn_core::Budget;
+use acorn_core::BudgetTracker;
 use acorn_source::{ByteSource, MemorySource};
-use acorn_zip::{ZipArchiveIndex, ZipIndexError, ZipMember, ZipViewError, index_zip_bytes, read_member_payload};
+use acorn_zip::{ZipArchiveIndex, ZipIndexError, ZipMember, ZipViewError, index_zip, read_member_payload};
 
 /// Errors opening or reading an OPC package.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -59,7 +59,9 @@ impl OpcPackage {
     /// Indexes `bytes` as a DOCX OPC ZIP container.
     pub fn open(label: impl Into<String>, bytes: Vec<u8>) -> Result<Self, OpcError> {
         let source = MemorySource::from_bytes(label, bytes);
-        let zip = index_zip_bytes("opc-bytes", read_all(&source)?)?;
+        // The index reads only the tail record, the directory, and member headers, so
+        // opening a package no longer copies the whole archive.
+        let zip = index_zip(&source)?;
         Ok(Self { source, zip })
     }
 
@@ -75,10 +77,13 @@ impl OpcPackage {
     }
 
     /// Reads and decodes a package part into memory.
-    pub fn read_part(&self, path: &str, budget: &Budget) -> Result<Vec<u8>, OpcError> {
+    ///
+    /// The part is settled against the caller's ledger, so every part of one document
+    /// shares a single allowance.
+    pub fn read_part(&self, path: &str, ledger: &mut BudgetTracker) -> Result<Vec<u8>, OpcError> {
         let normalized = normalize_part_path(path);
         let member = self.part(&normalized).ok_or_else(|| OpcError::PartNotFound(normalized))?;
-        read_member_payload(self.source.clone(), member, budget).map_err(OpcError::from)
+        read_member_payload(self.source.clone(), member, ledger).map_err(OpcError::from)
     }
 
     /// Lists normalized part paths in central directory order.
@@ -91,19 +96,4 @@ impl OpcPackage {
 pub fn normalize_part_path(path: &str) -> String {
     let trimmed = path.trim().replace('\\', "/");
     trimmed.trim_start_matches('/').to_string()
-}
-
-fn read_all(source: &MemorySource) -> Result<Vec<u8>, ZipIndexError> {
-    let length = source.length().ok_or(ZipIndexError::NotZip)? as usize;
-    let mut buffer = vec![0u8; length];
-    match source.read_at(0, &mut buffer) {
-        Ok(acorn_source::ReadOutcome::Complete) => Ok(buffer),
-        Ok(acorn_source::ReadOutcome::Partial { bytes_read }) => {
-            buffer.truncate(bytes_read as usize);
-            Ok(buffer)
-        }
-        Ok(acorn_source::ReadOutcome::Eof) => Err(ZipIndexError::NotZip),
-        Ok(acorn_source::ReadOutcome::Unavailable { .. }) => Err(ZipIndexError::NotZip),
-        Err(_) => Err(ZipIndexError::NotZip),
-    }
 }

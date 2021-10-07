@@ -1,4 +1,5 @@
-use acorn_core::ByteRange;
+use acorn_codec::CodecError;
+use acorn_core::{AddressSpaceId, ByteRange, NeedRange};
 use acorn_source::{ByteSource, ByteWindow, ReadOutcome, SourceRange};
 
 use crate::{ZipIndexError, entry::ZipMember};
@@ -18,12 +19,20 @@ pub enum ZipViewError {
     InvalidRange,
     /// Underlying source window could not be created.
     Window(String),
-    /// Deflate decompression failed.
-    DecompressFailed,
+    /// Codec failure with its own category, byte offsets, and bit positions preserved.
+    Codec(CodecError),
     /// Declared and actual sizes do not match.
     SizeMismatch,
     /// Decode exceeded the parse budget.
     BudgetExceeded,
+    /// The source does not currently hold a required interval.
+    ///
+    /// The caller may supply the interval and read again. Reporting this instead of an
+    /// invalid member keeps a not-yet-fetched archive distinct from a broken one.
+    NeedRange {
+        /// Missing interval in the archive file space.
+        range: ByteRange,
+    },
     /// Decoded CRC32 does not match the central-directory CRC32.
     CrcMismatch {
         /// CRC32 declared by the central directory.
@@ -35,6 +44,19 @@ pub enum ZipViewError {
     IncompleteCompressedInput,
 }
 
+impl ZipViewError {
+    /// Builds the core range request for this failure, when it is one.
+    ///
+    /// A caller that owns a provider can ask for exactly the interval the member could
+    /// not supply, instead of reporting the member as invalid.
+    pub fn need_range(&self, space: AddressSpaceId, reason: &str) -> Option<NeedRange> {
+        match self {
+            Self::NeedRange { range } => Some(NeedRange { space, range: *range, reason: reason.to_string() }),
+            _ => None,
+        }
+    }
+}
+
 impl std::fmt::Display for ZipViewError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -43,9 +65,12 @@ impl std::fmt::Display for ZipViewError {
             }
             Self::InvalidRange => write!(f, "invalid member payload range"),
             Self::Window(message) => write!(f, "window error: {message}"),
-            Self::DecompressFailed => write!(f, "deflate decompression failed"),
+            Self::Codec(error) => write!(f, "member codec error: {error}"),
             Self::SizeMismatch => write!(f, "member size mismatch"),
             Self::BudgetExceeded => write!(f, "decode budget exceeded"),
+            Self::NeedRange { range } => {
+                write!(f, "source does not hold bytes for range {}..{}", range.start, range.start + range.len)
+            }
             Self::CrcMismatch { .. } => write!(f, "member CRC32 mismatch"),
             Self::IncompleteCompressedInput => write!(f, "compressed input was not fully consumed"),
         }
@@ -76,7 +101,11 @@ pub fn read_raw_payload<S: ByteSource>(source: S, member: &ZipMember) -> Result<
             Ok(buffer)
         }
         Ok(ReadOutcome::Eof) => Err(ZipViewError::InvalidRange),
-        Ok(ReadOutcome::Unavailable { .. }) => Err(ZipViewError::InvalidRange),
+        Ok(ReadOutcome::Unavailable { range, .. }) => {
+            let range = ByteRange::new_allowing_empty(range.start, range.len)
+                .map_err(|error| ZipViewError::Window(error.to_string()))?;
+            Err(ZipViewError::NeedRange { range })
+        }
         Err(error) => Err(ZipViewError::Window(error.to_string())),
     }
 }

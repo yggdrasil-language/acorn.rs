@@ -20,11 +20,6 @@ impl SlidingWindow {
         self.filled
     }
 
-    /// Whether the window is empty.
-    pub fn is_empty(&self) -> bool {
-        self.filled == 0
-    }
-
     /// Whether `distance` resolves inside the bytes produced so far.
     pub fn can_reference(&self, distance: u32) -> bool {
         distance != 0 && distance as usize <= self.filled

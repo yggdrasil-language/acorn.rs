@@ -8,6 +8,9 @@ mod deflate;
 mod gzip;
 #[path = "hex.rs"]
 mod hex;
+#[cfg(feature = "compression")]
+#[path = "stream.rs"]
+mod stream;
 #[path = "varint.rs"]
 mod varint;
 #[path = "zigzag.rs"]
