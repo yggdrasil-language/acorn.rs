@@ -18,6 +18,7 @@ serde = { workspace = true, optional = true }
 default = []
 serde = ["dep:serde", "acorn-core/serde"]
 diff-ttf-parser = ["dep:ttf-parser"]
+outline-cff = ["dep:ttf-parser"]
 
 [dependencies.ttf-parser]
 version = "0.21"
