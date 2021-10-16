@@ -159,13 +159,15 @@ fn parse_format_4(r: &mut Reader<'_>) -> Result<HashMap<u32, u16>, ParseCmapErro
     for _ in 0..seg_count {
         deltas.push(r.read_i16()?);
     }
+    // The `idRangeOffset` array starts here. Each entry is a *self-relative*
+    // byte offset (OpenType §4.3), so the entry's own address has to be added
+    // back before indexing `glyphIdArray`.
+    let id_range_offsets_start = r.position();
     let mut ranges = Vec::with_capacity(seg_count);
     for _ in 0..seg_count {
         ranges.push(r.read_u16()?);
     }
-
-    // Start of glyphIdArray (current position).
-    let glyph_array_start = r.position();
+    let limit = r.limit;
 
     let mut map = HashMap::new();
     for i in 0..seg_count {
@@ -183,11 +185,12 @@ fn parse_format_4(r: &mut Reader<'_>) -> Result<HashMap<u32, u16>, ParseCmapErro
                 if g != 0 { Some(g) } else { None }
             }
             else {
-                let local = (glyph_array_start + range_off + ((cp - start) as usize * 2));
-                if local + 2 > r.bytes.len() {
+                // address_of_idRangeOffset[i] + idRangeOffset[i] + 2 * (cp - start)
+                let address = id_range_offsets_start + i * 2 + range_off + ((cp - start) as usize * 2);
+                if address + 2 > limit {
                     break;
                 }
-                let g = u16::from_be_bytes([r.bytes[local], r.bytes[local + 1]]);
+                let g = u16::from_be_bytes([r.bytes[address], r.bytes[address + 1]]);
                 if g == 0 {
                     None
                 }
