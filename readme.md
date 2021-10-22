@@ -103,12 +103,13 @@ opts into the `compression` feature explicitly.
 
 ## 🧩 Format Adapters
 
-`examples/*` holds the format crates and end-to-end samples. They are independent: each owns its own semantics and is
-added to the workspace only once it has real samples and structural tests.
+`examples/*` holds the format adapters and end-to-end samples. They are independent: each owns its own semantics and is
+added to the workspace only once it has real samples and structural tests. The shared archive base crate lives in
+`projects/acorn-zip` because document containers depend on it rather than the other way around.
 
 | Adapter                                     | Description                                          |
 |---------------------------------------------|------------------------------------------------------|
-| [`acorn-zip`](./examples/acorn-zip)         | ZIP central-directory indexer and member decoding    |
+| [`acorn-zip`](./projects/acorn-zip)         | ZIP central-directory indexer and member decoding    |
 | [`acorn-cfb`](./examples/acorn-cfb)         | Compound File Binary Format (OLE/CFB) reader         |
 | [`acorn-doc`](./examples/acorn-doc)         | Legacy Word `.doc` (OLE + Word binary) semantics     |
 | [`acorn-docx`](./examples/acorn-docx)       | DOCX OPC package layout on top of `acorn-zip`        |
@@ -149,7 +150,7 @@ For container work, add the format adapter explicitly:
 ```toml
 [dependencies]
 acorn = { path = "projects/acorn" }
-acorn-zip = { path = "examples/acorn-zip" }
+acorn-zip = { path = "projects/acorn-zip" }
 ```
 
 An adapter that needs decompression enables `acorn-codec/compression` in its own manifest, so ordinary binary parsers do
@@ -165,10 +166,10 @@ acorn.rs/
 │   ├── acorn-source/     # ByteSource, windows, sinks
 │   ├── acorn-codec/      # Representation transforms and compression
 │   ├── acorn-probe/      # Signatures and candidates
+│   ├── acorn-zip/        # ZIP container facts, decoding and writing
 │   ├── acorn-host/       # Per-platform host executables
 │   └── acorn/            # Aggregate facade
 ├── examples/             # Format adapters and end-to-end samples
-│   ├── acorn-zip/
 │   ├── acorn-docx/
 │   └── ...               # see the adapter table above
 └── ...

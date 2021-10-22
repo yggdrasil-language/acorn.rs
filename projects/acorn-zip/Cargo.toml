@@ -6,7 +6,7 @@ description = "ZIP archive layout indexer for Acorn."
 edition.workspace = true
 license.workspace = true
 homepage.workspace = true
-repository = "https://github.com/yggdrasil-language/acorn.rs/tree/dev/examples/acorn-zip"
+repository = "https://github.com/yggdrasil-language/acorn.rs/tree/dev/projects/acorn-zip"
 publish = false
 
 [dependencies]

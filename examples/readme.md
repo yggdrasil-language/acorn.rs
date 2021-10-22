@@ -8,7 +8,6 @@ A collection of binary format crates and end-to-end samples built on the Acorn c
 
 | Adapter | Description |
 |---|---|
-| [acorn-zip](./acorn-zip) | ZIP central-directory indexer and member decoding |
 | [acorn-cfb](./acorn-cfb) | Compound File Binary Format (OLE/CFB) reader |
 | [acorn-doc](./acorn-doc) | Legacy Word `.doc` (OLE + Word binary) semantics |
 | [acorn-docx](./acorn-docx) | DOCX OPC package layout on top of `acorn-zip` |
@@ -49,7 +48,9 @@ All adapters follow the same contract:
 3. Add the crate to the workspace only once it has real samples and structural tests.
 4. Cover normal, truncated, out-of-range, wrong-checksum, unknown-version and budget-exhaustion inputs.
 
-See [acorn-zip](./acorn-zip) and [acorn-pe](./acorn-pe) for reference implementations.
+See [acorn-docx](./acorn-docx) and [acorn-pe](./acorn-pe) for reference implementations.
+The shared archive container facts live in `acorn-zip` under `projects/`, so adapters consume that crate instead of
+growing their own ZIP layer.
 
 ## 🤝 Contributing
 
