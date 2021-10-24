@@ -5,13 +5,21 @@ mod decode;
 mod entry;
 mod eocd;
 mod index;
+mod time;
 mod view;
 mod zip64;
 
 pub use decode::{MemberDecodeFacts, decode_member, decode_member_with_facts, read_member_payload};
-pub use entry::ZipMember;
+pub use entry::{
+    DOS_ATTRIBUTE_DIRECTORY, FLAG_ENCRYPTED, FLAG_MASKED_DATA, FLAG_STRONG_ENCRYPTION, FLAG_UTF8_NAME, ZipEncryption,
+    ZipMember, ZipNameEncoding,
+};
 pub use eocd::{EndOfCentralDirectory, find_eocd, scan_eocd_fields};
 pub use index::{ZipArchiveIndex, ZipIndexError, index_zip, index_zip_bytes};
+pub use time::{
+    DOS_MAX_YEAR, DOS_MIN_YEAR, EXTENDED_TIMESTAMP_EXTRA_ID, ZipDateTime, ZipDosDateTime, ZipExtendedTimestamp,
+    parse_extended_timestamp,
+};
 pub use view::{
     COMPRESSION_DEFLATE, COMPRESSION_STORED, ZipViewError, member_payload_range, open_stored_member, read_raw_payload,
     read_stored_payload,

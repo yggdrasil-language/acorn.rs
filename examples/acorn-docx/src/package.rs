@@ -1,6 +1,6 @@
 use acorn_core::BudgetTracker;
 use acorn_source::{ByteSource, MemorySource};
-use acorn_zip::{ZipArchiveIndex, ZipIndexError, ZipMember, ZipViewError, index_zip, read_member_payload};
+use acorn_zip::{ZipArchiveIndex, ZipIndexError, ZipMember, ZipNameEncoding, ZipViewError, index_zip, read_member_payload};
 
 /// Errors opening or reading an OPC package.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -73,7 +73,7 @@ impl OpcPackage {
     /// Returns a member for a normalized OPC part path.
     pub fn part(&self, path: &str) -> Option<&ZipMember> {
         let normalized = normalize_part_path(path);
-        self.zip.members.iter().find(|member| member.path == normalized)
+        self.zip.members.iter().find(|member| member_name(member) == normalized)
     }
 
     /// Reads and decodes a package part into memory.
@@ -88,7 +88,20 @@ impl OpcPackage {
 
     /// Lists normalized part paths in central directory order.
     pub fn part_paths(&self) -> Vec<String> {
-        self.zip.members.iter().map(|member| member.path.clone()).collect()
+        self.zip.members.iter().map(member_name).collect()
+    }
+}
+
+/// Decodes a member name for OPC lookup.
+///
+/// ZIP only records whether the writer declared UTF-8. OPC part names are ASCII,
+/// so a lossy fallback is enough here and the shared ZIP layer stays byte-level.
+fn member_name(member: &ZipMember) -> String {
+    match member.name_encoding() {
+        ZipNameEncoding::Utf8 => std::str::from_utf8(&member.raw_name)
+            .map(str::to_owned)
+            .unwrap_or_else(|_| String::from_utf8_lossy(&member.raw_name).into_owned()),
+        ZipNameEncoding::Unspecified => String::from_utf8_lossy(&member.raw_name).into_owned(),
     }
 }
 

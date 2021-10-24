@@ -11,7 +11,7 @@ use common::minimal_single_file_zip;
 fn indexes_minimal_zip_members() {
     let index = index_zip_bytes("minimal.zip", minimal_single_file_zip()).expect("index");
     assert_eq!(index.members.len(), 1);
-    assert_eq!(index.members[0].path, "a");
+    assert_eq!(index.members[0].raw_name, b"a".to_vec());
     assert_eq!(index.members[0].compressed_size, 1);
     assert_eq!(index.members[0].crc32, 0x8cdc_1683);
     assert_eq!(index.members[0].version_needed, 20);
@@ -78,7 +78,7 @@ fn a_supplied_archive_indexes_as_usual() {
 
     let index = index_zip(&source).expect("index");
     assert_eq!(index.members.len(), 1);
-    assert_eq!(index.members[0].path, "a");
+    assert_eq!(index.members[0].raw_name, b"a".to_vec());
 }
 
 #[test]
@@ -97,7 +97,7 @@ fn indexing_reads_only_the_tail_directory_and_local_headers() {
 
     let partial = index_zip(&source).expect("index without the payload");
     assert_eq!(partial.members.len(), 1);
-    assert_eq!(partial.members[0].path, "a");
+    assert_eq!(partial.members[0].raw_name, b"a".to_vec());
     assert_eq!(partial.members[0].payload_range, payload);
 }
 
@@ -136,7 +136,7 @@ fn repeated_range_requests_converge_on_a_full_index() {
         match index_zip(&source) {
             Ok(index) => {
                 assert_eq!(index.members.len(), 1);
-                assert_eq!(index.members[0].path, "a");
+                assert_eq!(index.members[0].raw_name, b"a".to_vec());
                 assert!(fetches >= 2, "the tail, the directory, and a header are separate reads");
                 break;
             }

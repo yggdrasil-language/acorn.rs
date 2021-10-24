@@ -6,6 +6,7 @@ use acorn_source::{ByteSource, MemorySource, ReadOutcome, SourceIdentity};
 use crate::{
     entry::ZipMember,
     eocd::{EndOfCentralDirectory, read_u16_le, read_u32_le, scan_eocd_fields},
+    time::{ZipDosDateTime, parse_extended_timestamp},
     zip64::{needs_zip64_size, parse_zip64_extra},
 };
 
@@ -255,15 +256,22 @@ fn parse_central_directory<S: ByteSource>(
         if read_u32_le(directory, offset) != Some(CD_SIGNATURE) {
             return Err(ZipIndexError::MalformedEntry { offset: entry_offset });
         }
+        let version_made_by = read_u16_le(directory, offset + 4).unwrap_or(0);
         let version_needed = read_u16_le(directory, offset + 6).unwrap_or(0);
         let general_purpose_bit_flag = read_u16_le(directory, offset + 8).unwrap_or(0);
         let compression_method = read_u16_le(directory, offset + 10).unwrap_or(0);
+        let modified = ZipDosDateTime::new(
+            read_u16_le(directory, offset + 12).unwrap_or(0),
+            read_u16_le(directory, offset + 14).unwrap_or(0),
+        );
         let crc32 = read_u32_le(directory, offset + 16).unwrap_or(0);
         let compressed32 = read_u32_le(directory, offset + 20).unwrap_or(0);
         let uncompressed32 = read_u32_le(directory, offset + 24).unwrap_or(0);
         let name_length = read_u16_le(directory, offset + 28).unwrap_or(0) as usize;
         let extra_length = read_u16_le(directory, offset + 30).unwrap_or(0) as usize;
         let comment_length = read_u16_le(directory, offset + 32).unwrap_or(0) as usize;
+        let internal_attributes = read_u16_le(directory, offset + 36).unwrap_or(0);
+        let external_attributes = read_u32_le(directory, offset + 38).unwrap_or(0);
         let local_offset32 = read_u32_le(directory, offset + 42).unwrap_or(0);
 
         let needs_uncompressed = needs_zip64_size(uncompressed32);
@@ -275,9 +283,13 @@ fn parse_central_directory<S: ByteSource>(
         if name_end > end {
             return Err(ZipIndexError::MalformedEntry { offset: entry_offset });
         }
-        let path = String::from_utf8_lossy(&directory[name_start..name_end]).into_owned();
+        let raw_name = directory[name_start..name_end].to_vec();
+        // The label is diagnostic text only. The member keeps the undecoded bytes.
+        let name_label = String::from_utf8_lossy(&raw_name);
 
         let extra_start = name_end;
+        let modified_unix =
+            parse_extended_timestamp(directory, extra_start, extra_length).and_then(|stamp| stamp.modified_unix);
         let zip64 = if needs_uncompressed || needs_compressed || needs_local_offset {
             parse_zip64_extra(
                 directory,
@@ -305,7 +317,7 @@ fn parse_central_directory<S: ByteSource>(
             .map_err(|_| ZipIndexError::MalformedEntry { offset: entry_offset })?;
 
         let member_node = layout
-            .insert_node(NodeState::Indexed, entry_range, format!("ZIP member {path}"))
+            .insert_node(NodeState::Indexed, entry_range, format!("ZIP member {name_label}"))
             .map_err(|error| ZipIndexError::Layout(error.to_string()))?;
 
         let (data_range, payload_range) =
@@ -318,11 +330,16 @@ fn parse_central_directory<S: ByteSource>(
         });
 
         members.push(ZipMember {
-            path,
+            raw_name,
+            version_made_by,
             version_needed,
             general_purpose_bit_flag,
             compression_method,
             crc32,
+            modified,
+            modified_unix,
+            internal_attributes,
+            external_attributes,
             local_header_offset: zip64.local_header_offset,
             compressed_size: zip64.compressed_size,
             uncompressed_size: zip64.uncompressed_size,

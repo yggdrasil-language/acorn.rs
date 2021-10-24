@@ -7,7 +7,7 @@ use std::{
 
 use acorn_core::{Budget, BudgetTracker};
 use acorn_source::{ByteSource, MemorySource, ReadOutcome};
-use acorn_zip::{ZipIndexError, ZipViewError, decode_member, index_zip};
+use acorn_zip::{ZipIndexError, ZipMember, ZipNameEncoding, ZipViewError, decode_member, index_zip};
 use serde::{Deserialize, Serialize};
 
 use crate::class::{JvmClassError, JvmClassFile};
@@ -147,19 +147,33 @@ impl JvmJarPackage {
         let mut package = Self::new(file_name);
         let mut ledger = BudgetTracker::new(Budget::default());
         for member in &index.members {
-            if member.path.ends_with('/') {
+            if member.name_is_directory() {
                 continue;
             }
-            let decoded = decode_member(member.path.clone(), source.clone(), member, &mut ledger)?;
+            let path = member_name(member);
+            let decoded = decode_member(path.clone(), source.clone(), member, &mut ledger)?;
             let entry_bytes = read_source(&decoded)?;
-            if member.path.eq_ignore_ascii_case(MANIFEST_PATH) {
+            if path.eq_ignore_ascii_case(MANIFEST_PATH) {
                 package.main_class = parse_manifest_main_class(&entry_bytes);
             }
             else {
-                package.push_entry(member.path.clone(), entry_bytes);
+                package.push_entry(path, entry_bytes);
             }
         }
         Ok(package)
+    }
+}
+
+/// Decodes a JAR entry name.
+///
+/// ZIP only records whether the writer declared UTF-8. JAR entry names are ASCII,
+/// so a lossy fallback is enough here and the shared ZIP layer stays byte-level.
+fn member_name(member: &ZipMember) -> String {
+    match member.name_encoding() {
+        ZipNameEncoding::Utf8 => std::str::from_utf8(&member.raw_name)
+            .map(str::to_owned)
+            .unwrap_or_else(|_| String::from_utf8_lossy(&member.raw_name).into_owned()),
+        ZipNameEncoding::Unspecified => String::from_utf8_lossy(&member.raw_name).into_owned(),
     }
 }
 
