@@ -134,8 +134,8 @@ fn eocd_points_at_central_directory(
     read_u32_le(bytes, start) == Some(CD_SIGNATURE)
 }
 
-/// Byte range covering the central directory.
 impl EndOfCentralDirectory {
+    /// Byte range covering the central directory, when its offset and size are consistent.
     pub fn central_directory_range(&self) -> Option<ByteRange> {
         ByteRange::new(self.central_directory_offset, self.central_directory_size).ok()
     }
