@@ -2,7 +2,7 @@
 name = "acorn-zip"
 version.workspace = true
 authors.workspace = true
-description = "ZIP archive layout indexer for Acorn."
+description = "ZIP container facts, member decoding and writing for Acorn."
 edition.workspace = true
 license.workspace = true
 homepage.workspace = true
