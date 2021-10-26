@@ -9,6 +9,7 @@ default-members = [
     "projects/acorn-probe",
     "projects/acorn-ttf",
     "projects/acorn-zip",
+    "projects/acorn-tar",
     "examples/acorn-docx",
     "examples/acorn-epub",
 ]

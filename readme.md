@@ -94,6 +94,7 @@ acorn ────────→ acorn-core + acorn-source + acorn-codec + acor
 | [`acorn-codec`](./projects/acorn-codec)   | Bit I/O, integer/representation transforms, Deflate / zlib / gzip                  | ✅ Active |
 | [`acorn-probe`](./projects/acorn-probe)   | Magic-byte signatures, probe candidates, container registry                        | ✅ Active |
 | [`acorn-zip`](./projects/acorn-zip)       | ZIP container facts, member decoding and writer                                    | ✅ Active |
+| [`acorn-tar`](./projects/acorn-tar)       | Tar container facts, reading, writing and tar-gzip composition                     | ✅ Active |
 | [`acorn-host`](./projects/acorn-host)     | Minimal per-platform host executable wrappers                                      | ✅ Active |
 | [`acorn`](./projects/acorn)               | Format-neutral aggregate facade                                                    | ✅ Active |
 
@@ -105,8 +106,9 @@ opts into the `compression` feature explicitly.
 ## 🧩 Format Adapters
 
 `examples/*` holds the format adapters and end-to-end samples. They are independent: each owns its own semantics and is
-added to the workspace only once it has real samples and structural tests. The shared archive base crate lives in
-`projects/acorn-zip` because document containers depend on it rather than the other way around.
+added to the workspace only once it has real samples and structural tests. The shared archive base crates live in
+`projects/acorn-zip` and `projects/acorn-tar` because document containers depend on them rather than the other way
+around.
 
 | Adapter                                     | Description                                          |
 |---------------------------------------------|------------------------------------------------------|
@@ -167,6 +169,7 @@ acorn.rs/
 │   ├── acorn-codec/      # Representation transforms and compression
 │   ├── acorn-probe/      # Signatures and candidates
 │   ├── acorn-zip/        # ZIP container facts, decoding and writing
+│   ├── acorn-tar/        # Tar container facts, reading, writing and tar-gzip
 │   ├── acorn-host/       # Per-platform host executables
 │   └── acorn/            # Aggregate facade
 ├── examples/             # Format adapters and end-to-end samples
