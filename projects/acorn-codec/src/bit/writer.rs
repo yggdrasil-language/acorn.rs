@@ -71,6 +71,15 @@ impl BitWriter {
         self.bytes.push(byte);
     }
 
+    /// Takes the whole bytes written so far, keeping any partially filled byte.
+    ///
+    /// Streaming encoders use it to flush complete bytes between blocks while
+    /// leaving the next write on the same bit position, so consecutive blocks
+    /// stay bit-continuous.
+    pub fn take_bytes(&mut self) -> Vec<u8> {
+        std::mem::take(&mut self.bytes)
+    }
+
     /// Pads the current byte with zeroes so the next write starts on a boundary.
     pub fn align_to_byte(&mut self) {
         if self.bit_count > 0 {

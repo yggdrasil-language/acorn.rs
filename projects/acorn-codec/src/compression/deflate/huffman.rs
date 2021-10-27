@@ -1,7 +1,7 @@
 //! Canonical Huffman table construction and decoding.
 
 use crate::{
-    bit::{BitPosition, BitReader},
+    bit::{BitPosition, BitSource},
     error::CodecError,
 };
 
@@ -77,7 +77,10 @@ impl HuffmanTable {
     }
 
     /// Decodes one symbol from `reader`.
-    pub fn decode(&self, reader: &mut BitReader<'_>) -> Result<u16, CodecError> {
+    ///
+    /// Accepts any [`BitSource`], so the same canonical lookup serves the
+    /// one-shot decoder and the resumable streaming decoder.
+    pub fn decode(&self, reader: &mut impl BitSource) -> Result<u16, CodecError> {
         let mut code = 0u32;
         let mut first = 0u32;
         let mut index = 0usize;
