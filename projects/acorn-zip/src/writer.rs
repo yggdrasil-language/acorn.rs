@@ -5,11 +5,12 @@
 //! Deflate bytes come from `acorn-codec`; no external archive or compression
 //! backend is involved.
 
-use acorn_codec::compression::{Deflate, deflate::DeflateLevel};
+use acorn_codec::compression::{Crc32, Deflate, DeflateStreamEncoder, deflate::DeflateLevel};
+use acorn_source::{ByteSink, WriteError, WriteOutcome};
 
 use crate::{
     crc::ieee_crc32,
-    entry::{DOS_ATTRIBUTE_DIRECTORY, FLAG_UTF8_NAME},
+    entry::{DOS_ATTRIBUTE_DIRECTORY, FLAG_DATA_DESCRIPTOR, FLAG_UTF8_NAME},
     time::{EXTENDED_TIMESTAMP_EXTRA_ID, ZipDosDateTime},
     zip64::ZIP64_EXTRA_ID,
 };
@@ -19,6 +20,7 @@ const CENTRAL_HEADER_SIG: u32 = 0x0201_4b50;
 const EOCD_SIG: u32 = 0x0605_4b50;
 const ZIP64_EOCD_SIG: u32 = 0x0606_4b50;
 const ZIP64_EOCD_LOCATOR_SIG: u32 = 0x0706_4b50;
+const DATA_DESCRIPTOR_SIG: u32 = 0x0807_4b50;
 
 /// Compression method for a written member.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -136,6 +138,16 @@ pub enum ZipWriteError {
         /// Supplied Unix timestamp.
         value: i64,
     },
+    /// The byte sink rejected a write.
+    Sink(WriteError),
+    /// A member is already open.
+    EntryInProgress,
+    /// No member is open.
+    NoEntryInProgress,
+    /// The archive was already closed.
+    Closed,
+    /// A member size would exceed 64 bits.
+    SizeOverflow,
 }
 
 impl std::fmt::Display for ZipWriteError {
@@ -147,6 +159,11 @@ impl std::fmt::Display for ZipWriteError {
             Self::ExtendedTimestampOutOfRange { value } => {
                 write!(f, "extended timestamp does not fit 32 bits: {value}")
             }
+            Self::Sink(error) => write!(f, "sink write failed: {error}"),
+            Self::EntryInProgress => write!(f, "a ZIP member is already open"),
+            Self::NoEntryInProgress => write!(f, "no ZIP member is open"),
+            Self::Closed => write!(f, "the ZIP archive is already closed"),
+            Self::SizeOverflow => write!(f, "member size exceeds 64 bits"),
         }
     }
 }
@@ -187,6 +204,337 @@ impl ZipWriter {
     }
 }
 
+/// Metadata for one streaming member.
+///
+/// The payload is supplied chunk by chunk through
+/// [`ZipStreamWriter::write_chunk`], so sizes are unknown while the local
+/// header is written.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ZipStreamEntry {
+    /// Raw member name bytes.
+    pub name: Vec<u8>,
+    /// Compression method.
+    pub compression: ZipCompression,
+    /// DOS modification time written to both headers.
+    pub modified: ZipDosDateTime,
+    /// Optional extended-timestamp modification time in Unix seconds.
+    pub modified_unix: Option<i64>,
+    /// Version made by, including the host system in its upper byte.
+    pub version_made_by: u16,
+    /// Internal attributes.
+    pub internal_attributes: u16,
+    /// External attributes.
+    pub external_attributes: u32,
+    /// Whether the general-purpose UTF-8 name flag should be set.
+    pub name_is_utf8: bool,
+}
+
+impl ZipStreamEntry {
+    /// Creates a stored member with default header attributes.
+    pub fn stored(name: impl AsRef<[u8]>) -> Self {
+        Self::new(name, ZipCompression::Store)
+    }
+
+    /// Creates a Deflate member with default header attributes.
+    pub fn deflated(name: impl AsRef<[u8]>) -> Self {
+        Self::new(name, ZipCompression::Deflate)
+    }
+
+    /// Creates a `folder/` directory member with a DOS directory attribute.
+    pub fn directory(name: impl AsRef<[u8]>, modified: ZipDosDateTime) -> Self {
+        let mut entry = Self::stored(name);
+        entry.modified = modified;
+        entry.external_attributes = u32::from(DOS_ATTRIBUTE_DIRECTORY);
+        entry
+    }
+
+    fn new(name: impl AsRef<[u8]>, compression: ZipCompression) -> Self {
+        Self {
+            name: name.as_ref().to_vec(),
+            compression,
+            modified: ZipDosDateTime::ZERO,
+            modified_unix: None,
+            version_made_by: 20,
+            internal_attributes: 0,
+            external_attributes: 0,
+            name_is_utf8: true,
+        }
+    }
+}
+
+/// One member whose local header has been written but whose descriptor has not.
+#[derive(Debug)]
+struct PendingEntry {
+    name: Vec<u8>,
+    offset: u64,
+    method: u16,
+    flags: u16,
+    modified: ZipDosDateTime,
+    modified_unix: Option<i64>,
+    version_made_by: u16,
+    internal_attributes: u16,
+    external_attributes: u32,
+    crc: Crc32,
+    uncompressed_size: u64,
+    compressed_size: u64,
+    deflate: Option<DeflateStreamEncoder>,
+}
+
+/// Writes a ZIP archive incrementally into a [`ByteSink`].
+///
+/// Members are opened with [`ZipStreamWriter::begin_entry`], fed with
+/// [`ZipStreamWriter::write_chunk`], and closed with
+/// [`ZipStreamWriter::finish_entry`]. Compressed bytes reach the sink as each
+/// chunk is fed, so peak memory tracks the caller's chunk size instead of the
+/// archive size. [`ZipStreamWriter::close`] appends the central directory and
+/// the end records.
+///
+/// Because sizes are unknown while a local header is written, every streamed
+/// member reserves a ZIP64 extra field and publishes its real CRC and sizes in
+/// a data descriptor (general-purpose bit 3). The central directory still
+/// downgrades to classic fields when every recorded value fits.
+#[derive(Debug)]
+pub struct ZipStreamWriter<S: ByteSink> {
+    sink: S,
+    zip64: Zip64Mode,
+    entries: Vec<PreparedEntry>,
+    pending: Option<PendingEntry>,
+    closed: bool,
+}
+
+impl<S: ByteSink> ZipStreamWriter<S> {
+    /// Creates a streaming writer with the automatic ZIP64 policy.
+    pub fn new(sink: S) -> Self {
+        Self::with_zip64(sink, Zip64Mode::Auto)
+    }
+
+    /// Creates a streaming writer with an explicit ZIP64 policy.
+    pub fn with_zip64(sink: S, zip64: Zip64Mode) -> Self {
+        Self { sink, zip64, entries: Vec::new(), pending: None, closed: false }
+    }
+
+    /// Returns the underlying sink.
+    pub fn sink(&self) -> &S {
+        &self.sink
+    }
+
+    /// Returns the number of bytes written so far.
+    pub fn offset(&self) -> u64 {
+        self.sink.len()
+    }
+
+    /// Returns whether the archive was closed.
+    pub fn is_closed(&self) -> bool {
+        self.closed
+    }
+
+    /// Returns whether a member is currently open.
+    pub fn has_open_entry(&self) -> bool {
+        self.pending.is_some()
+    }
+
+    /// Writes the local header of `entry` and opens it for payload chunks.
+    pub fn begin_entry(&mut self, entry: ZipStreamEntry) -> Result<(), ZipWriteError> {
+        if self.closed {
+            return Err(ZipWriteError::Closed);
+        }
+        if self.pending.is_some() {
+            return Err(ZipWriteError::EntryInProgress);
+        }
+        if entry.name.len() > u16::MAX as usize {
+            return Err(ZipWriteError::NameTooLong { length: entry.name.len() });
+        }
+        if entry.name_is_utf8 && std::str::from_utf8(&entry.name).is_err() {
+            return Err(ZipWriteError::InvalidUtf8Name);
+        }
+        let timestamp_extra = entry.modified_unix.map(extended_timestamp_extra).transpose()?;
+
+        let mut extra = Vec::with_capacity(16 + timestamp_extra.as_ref().map_or(0, Vec::len));
+        // The real sizes only become known after the payload, so the local
+        // header carries ZIP64 placeholders and the descriptor carries values.
+        push_zip64_extra(&mut extra, false, 0, 0, 0);
+        if let Some(timestamp) = &timestamp_extra {
+            extra.extend_from_slice(timestamp);
+        }
+        check_extra_length(extra.len())?;
+
+        let flags = FLAG_DATA_DESCRIPTOR | if entry.name_is_utf8 { FLAG_UTF8_NAME } else { 0 };
+        let method = entry.compression.method();
+        let offset = self.sink.len();
+
+        let mut header = Vec::with_capacity(30 + entry.name.len() + extra.len());
+        write_local_header(&mut header, &entry.name, &extra, 45, flags, method, entry.modified, 0, u64::MAX, u64::MAX, true);
+        self.append(&header)?;
+
+        self.pending = Some(PendingEntry {
+            name: entry.name,
+            offset,
+            method,
+            flags,
+            modified: entry.modified,
+            modified_unix: entry.modified_unix,
+            version_made_by: entry.version_made_by,
+            internal_attributes: entry.internal_attributes,
+            external_attributes: entry.external_attributes,
+            crc: Crc32::new(),
+            uncompressed_size: 0,
+            compressed_size: 0,
+            deflate: (method == 8).then(|| DeflateStreamEncoder::new(DeflateLevel::Default)),
+        });
+        Ok(())
+    }
+
+    /// Feeds one uncompressed payload chunk of the open member.
+    pub fn write_chunk(&mut self, chunk: &[u8]) -> Result<(), ZipWriteError> {
+        if self.closed {
+            return Err(ZipWriteError::Closed);
+        }
+        if self.pending.is_none() {
+            return Err(ZipWriteError::NoEntryInProgress);
+        }
+        if chunk.is_empty() {
+            return Ok(());
+        }
+        let compressed = {
+            let pending = self.pending.as_mut().expect("open member");
+            pending.crc.update(chunk);
+            pending.uncompressed_size =
+                pending.uncompressed_size.checked_add(chunk.len() as u64).ok_or(ZipWriteError::SizeOverflow)?;
+            match pending.deflate.as_mut() {
+                Some(encoder) => {
+                    let compressed = encoder.feed(chunk);
+                    pending.compressed_size =
+                        pending.compressed_size.checked_add(compressed.len() as u64).ok_or(ZipWriteError::SizeOverflow)?;
+                    Some(compressed)
+                }
+                None => {
+                    pending.compressed_size =
+                        pending.compressed_size.checked_add(chunk.len() as u64).ok_or(ZipWriteError::SizeOverflow)?;
+                    None
+                }
+            }
+        };
+        match compressed {
+            Some(bytes) => self.append(&bytes),
+            None => self.append(chunk),
+        }
+    }
+
+    /// Writes the data descriptor and records the member for the central directory.
+    pub fn finish_entry(&mut self) -> Result<(), ZipWriteError> {
+        if self.closed {
+            return Err(ZipWriteError::Closed);
+        }
+        let mut pending = self.pending.take().ok_or(ZipWriteError::NoEntryInProgress)?;
+        let result = self.write_descriptor(&mut pending);
+        if result.is_err() {
+            self.pending = Some(pending);
+            return result;
+        }
+
+        let zip64 = match self.zip64 {
+            Zip64Mode::Always => true,
+            Zip64Mode::Auto => {
+                pending.uncompressed_size >= u32::MAX as u64
+                    || pending.compressed_size >= u32::MAX as u64
+                    || pending.offset >= u32::MAX as u64
+            }
+        };
+        self.entries.push(PreparedEntry {
+            name: pending.name,
+            offset: pending.offset,
+            method: pending.method,
+            flags: pending.flags,
+            crc: pending.crc.value(),
+            uncompressed_size: pending.uncompressed_size,
+            compressed_size: pending.compressed_size,
+            modified: pending.modified,
+            modified_unix: pending.modified_unix,
+            version_made_by: pending.version_made_by,
+            internal_attributes: pending.internal_attributes,
+            external_attributes: pending.external_attributes,
+            zip64,
+        });
+        Ok(())
+    }
+
+    /// Appends the central directory, ZIP64 records when needed, and the EOCD.
+    pub fn close(&mut self) -> Result<(), ZipWriteError> {
+        if self.closed {
+            return Err(ZipWriteError::Closed);
+        }
+        if self.pending.is_some() {
+            return Err(ZipWriteError::EntryInProgress);
+        }
+
+        let central_directory_offset = self.sink.len();
+        let mut central_directory_size = 0u64;
+        for index in 0..self.entries.len() {
+            let mut record = Vec::new();
+            write_central_header(&mut record, &self.entries[index])?;
+            central_directory_size += record.len() as u64;
+            self.append(&record)?;
+        }
+
+        let entry_count = self.entries.len() as u64;
+        let needs_zip64 = match self.zip64 {
+            Zip64Mode::Always => true,
+            Zip64Mode::Auto => {
+                entry_count >= u16::MAX as u64
+                    || central_directory_size >= u32::MAX as u64
+                    || central_directory_offset >= u32::MAX as u64
+            }
+        };
+
+        let mut tail = Vec::new();
+        if needs_zip64 {
+            let zip64_offset = self.sink.len() + tail.len() as u64;
+            write_zip64_eocd(&mut tail, entry_count, central_directory_size, central_directory_offset);
+            write_zip64_locator(&mut tail, zip64_offset);
+        }
+        write_eocd(&mut tail, entry_count, central_directory_size, central_directory_offset, needs_zip64);
+        self.append(&tail)?;
+
+        self.closed = true;
+        Ok(())
+    }
+
+    /// Returns the underlying sink.
+    pub fn into_sink(self) -> S {
+        self.sink
+    }
+
+    fn write_descriptor(&mut self, pending: &mut PendingEntry) -> Result<(), ZipWriteError> {
+        if let Some(encoder) = pending.deflate.as_mut() {
+            let tail = encoder.finish();
+            pending.compressed_size =
+                pending.compressed_size.checked_add(tail.len() as u64).ok_or(ZipWriteError::SizeOverflow)?;
+            self.append(&tail)?;
+        }
+        let descriptor = data_descriptor(pending.crc.value(), pending.compressed_size, pending.uncompressed_size);
+        self.append(&descriptor)
+    }
+
+    fn append(&mut self, bytes: &[u8]) -> Result<(), ZipWriteError> {
+        match self.sink.append(bytes).map_err(ZipWriteError::Sink)? {
+            WriteOutcome::Complete => Ok(()),
+            WriteOutcome::WouldExceedBudget { attempted, limit } => {
+                Err(ZipWriteError::Sink(WriteError::BudgetExceeded { attempted, limit }))
+            }
+        }
+    }
+}
+
+fn data_descriptor(crc: u32, compressed_size: u64, uncompressed_size: u64) -> Vec<u8> {
+    let mut output = Vec::with_capacity(24);
+    put_u32(&mut output, DATA_DESCRIPTOR_SIG);
+    put_u32(&mut output, crc);
+    put_u64(&mut output, compressed_size);
+    put_u64(&mut output, uncompressed_size);
+    output
+}
+
+#[derive(Debug)]
 struct PreparedEntry {
     name: Vec<u8>,
     offset: u64,
