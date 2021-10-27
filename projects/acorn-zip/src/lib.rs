@@ -11,6 +11,7 @@ mod view;
 mod writer;
 mod zip64;
 
+pub use acorn_codec::compression::StreamChunk;
 pub use crc::ieee_crc32;
 pub use decode::{MemberDecodeFacts, decode_member, decode_member_with_facts, read_member_payload};
 pub use entry::{
@@ -24,8 +25,8 @@ pub use time::{
     parse_extended_timestamp,
 };
 pub use view::{
-    COMPRESSION_DEFLATE, COMPRESSION_STORED, ZipViewError, member_payload_range, open_stored_member, read_raw_payload,
-    read_stored_payload,
+    COMPRESSION_DEFLATE, COMPRESSION_STORED, DEFAULT_STREAM_CHUNK, ZipMemberStream, ZipViewError, member_payload_range,
+    open_stored_member, read_raw_payload, read_stored_payload,
 };
 pub use writer::{Zip64Mode, ZipCompression, ZipEntry, ZipStreamEntry, ZipStreamWriter, ZipWriteError, ZipWriter};
 pub use zip64::{Zip64Fields, parse_zip64_extra};
