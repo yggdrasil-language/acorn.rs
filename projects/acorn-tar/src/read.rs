@@ -2,19 +2,20 @@
 
 use std::fmt;
 
+use acorn_codec::compression::StreamChunk;
 use acorn_core::{BudgetError, BudgetTracker, ByteRange};
 use acorn_source::{
-    ByteSource, MemorySource, ReadError, ReadOutcome, ReadResult, SourceCapabilities, SourceIdentity, SourceRange,
+    ByteSource, ByteWindow, MemorySource, ReadError, ReadOutcome, ReadResult, SourceCapabilities, SourceIdentity, SourceRange,
     content_digest_of,
 };
 
 use crate::{
-    format::{BLOCK_SIZE, HeaderError, parse_header},
+    format::{BLOCK_SIZE, Header, HeaderError, parse_header},
     model::{TarArchive, TarEntry, TarEntryKind},
 };
 
 /// Largest metadata payload accepted for GNU long names and PAX records.
-const MAX_METADATA_BYTES: u64 = 1024 * 1024;
+pub(crate) const MAX_METADATA_BYTES: u64 = 1024 * 1024;
 
 /// Tar indexing failures.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -195,16 +196,13 @@ pub fn index_tar<S: ByteSource>(source: &S) -> Result<TarArchive, TarIndexError>
             _ => {}
         }
 
-        let path = pending.long_name.take().or_else(|| pending.pax.path.take()).unwrap_or_else(|| header.path());
-        let link_name = pending.long_link.take().or_else(|| pending.pax.linkpath.take()).unwrap_or(header.link_name);
-        let size = pending.pax.size.take().unwrap_or(header.size);
+        let (path, link_name, size, modified_unix) = pending.resolve(&header);
         let data_end = data_offset.checked_add(size).ok_or(TarIndexError::Truncated { offset: data_offset })?;
         if data_end > length {
             return Err(TarIndexError::Truncated { offset: data_offset });
         }
         let data_range = ByteRange::new_allowing_empty(data_offset, size)
             .map_err(|error| TarIndexError::InvalidHeaderField { offset, field: error_field(error) })?;
-        let modified_unix = pending.pax.modified_unix.take().unwrap_or(header.modified_unix);
         entries.push(TarEntry {
             path,
             link_name,
@@ -262,6 +260,79 @@ pub fn read_member_payload<S: ByteSource>(
     }
 }
 
+/// Streams one indexed member payload in caller-sized chunks.
+///
+/// The reader copies directly from the source range into the destination, so
+/// peak memory follows the destination length and never the member size.
+/// Dropping the reader cancels the member without leaving shared state.
+pub struct TarEntryStream<S: ByteSource> {
+    window: ByteWindow<S>,
+    position: u64,
+    remaining: u64,
+    finished: bool,
+}
+
+impl<S: ByteSource> TarEntryStream<S> {
+    /// Opens a reader over `entry`'s payload range.
+    pub fn open(source: S, entry: &TarEntry) -> Result<Self, TarReadError> {
+        let range = entry.data_range;
+        let source_range =
+            SourceRange::new(range.start, range.len).map_err(|error| TarReadError::InvalidRange(error.to_string()))?;
+        let window = ByteWindow::new(source, 0, source_range).map_err(|error| TarReadError::Source(error.to_string()))?;
+        Ok(Self { window, position: 0, remaining: range.len, finished: false })
+    }
+
+    /// Returns how many payload bytes this reader delivered.
+    pub fn read_bytes(&self) -> u64 {
+        self.position
+    }
+
+    /// Returns how many payload bytes remain.
+    pub fn remaining_bytes(&self) -> u64 {
+        self.remaining
+    }
+
+    /// Returns whether the declared payload length has been delivered.
+    pub fn is_finished(&self) -> bool {
+        self.finished
+    }
+
+    /// Copies up to `out.len()` payload bytes.
+    ///
+    /// An empty destination yields `Produced(0)`. The final bytes are returned
+    /// as `Produced`, and the following call reports `Finished`.
+    pub fn read(&mut self, out: &mut [u8]) -> Result<StreamChunk, TarReadError> {
+        if self.finished {
+            return Ok(StreamChunk::Finished);
+        }
+        if out.is_empty() {
+            return Ok(StreamChunk::Produced(0));
+        }
+        if self.remaining == 0 {
+            self.finished = true;
+            return Ok(StreamChunk::Finished);
+        }
+        let take = (out.len() as u64).min(self.remaining) as usize;
+        let bytes_read = match self.window.read_at(self.position, &mut out[..take]) {
+            Ok(ReadOutcome::Complete) => take,
+            Ok(ReadOutcome::Partial { bytes_read }) => bytes_read as usize,
+            Ok(ReadOutcome::Eof) => return Err(TarReadError::Source("payload ended before its declared size".to_owned())),
+            Ok(ReadOutcome::Unavailable { range, reason }) => {
+                let range =
+                    ByteRange::new_allowing_empty(range.start, range.len).unwrap_or(ByteRange { start: range.start, len: 0 });
+                return Err(TarReadError::NeedRange { range, reason });
+            }
+            Err(error) => return Err(TarReadError::Source(error.to_string())),
+        };
+        self.position += bytes_read as u64;
+        self.remaining -= bytes_read as u64;
+        if self.remaining == 0 {
+            self.finished = true;
+        }
+        Ok(StreamChunk::Produced(bytes_read))
+    }
+}
+
 fn read_block<S: ByteSource>(source: &S, offset: u64, length: u64) -> Result<Vec<u8>, TarIndexError> {
     if offset.checked_add(BLOCK_SIZE).is_none_or(|end| end > length) {
         return Err(TarIndexError::Truncated { offset });
@@ -282,7 +353,7 @@ fn read_metadata<S: ByteSource>(source: &S, offset: u64, size: u64, header_offse
     Ok(bytes)
 }
 
-fn padded_offset(end: u64) -> u64 {
+pub(crate) fn padded_offset(end: u64) -> u64 {
     end + (BLOCK_SIZE - end % BLOCK_SIZE) % BLOCK_SIZE
 }
 
@@ -329,14 +400,14 @@ fn error_field(error: acorn_core::RangeError) -> &'static str {
 }
 
 #[derive(Default)]
-struct PendingMetadata {
-    long_name: Option<Vec<u8>>,
-    long_link: Option<Vec<u8>>,
+pub(crate) struct PendingMetadata {
+    pub(crate) long_name: Option<Vec<u8>>,
+    pub(crate) long_link: Option<Vec<u8>>,
     pax: PaxOverrides,
 }
 
 impl PendingMetadata {
-    fn has_values(&self) -> bool {
+    pub(crate) fn has_values(&self) -> bool {
         self.long_name.is_some()
             || self.long_link.is_some()
             || self.pax.path.is_some()
@@ -345,7 +416,16 @@ impl PendingMetadata {
             || self.pax.modified_unix.is_some()
     }
 
-    fn apply_pax(&mut self, bytes: Vec<u8>, offset: u64) -> Result<(), TarIndexError> {
+    /// Resolves the member facts once the metadata records are complete.
+    pub(crate) fn resolve(&mut self, header: &Header) -> (Vec<u8>, Vec<u8>, u64, i64) {
+        let path = self.long_name.take().or_else(|| self.pax.path.take()).unwrap_or_else(|| header.path());
+        let link_name = self.long_link.take().or_else(|| self.pax.linkpath.take()).unwrap_or_else(|| header.link_name.clone());
+        let size = self.pax.size.take().unwrap_or(header.size);
+        let modified_unix = self.pax.modified_unix.take().unwrap_or(header.modified_unix);
+        (path, link_name, size, modified_unix)
+    }
+
+    pub(crate) fn apply_pax(&mut self, bytes: Vec<u8>, offset: u64) -> Result<(), TarIndexError> {
         for (key, value) in parse_pax_records(&bytes, offset)? {
             match key.as_slice() {
                 b"path" => self.pax.path = Some(value.to_vec()),
