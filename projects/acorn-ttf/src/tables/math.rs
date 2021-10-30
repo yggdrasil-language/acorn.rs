@@ -30,10 +30,7 @@ const MAX_KERN_HEIGHTS: usize = 1024;
 /// truncation: the table directory already told us how long the table is.
 fn window(data: &[u8], start: usize) -> Result<Reader<'_>, ParseMathError> {
     if start > data.len() {
-        return Err(ParseMathError::Malformed(format!(
-            "subtable offset {start} is past the table length {}",
-            data.len()
-        )));
+        return Err(ParseMathError::Malformed(format!("subtable offset {start} is past the table length {}", data.len())));
     }
     Ok(Reader::at(data, start, data.len() - start))
 }
@@ -42,18 +39,11 @@ fn window(data: &[u8], start: usize) -> Result<Reader<'_>, ParseMathError> {
 ///
 /// A zero offset means "this subtable is absent" and yields `None`. Any other
 /// offset has to land inside `data`.
-fn subtable<'a>(
-    data: &'a [u8],
-    base: usize,
-    offset: usize,
-    what: &'static str,
-) -> Result<Option<Reader<'a>>, ParseMathError> {
+fn subtable<'a>(data: &'a [u8], base: usize, offset: usize, what: &'static str) -> Result<Option<Reader<'a>>, ParseMathError> {
     if offset == 0 {
         return Ok(None);
     }
-    let abs = base
-        .checked_add(offset)
-        .ok_or_else(|| ParseMathError::Malformed(format!("{what} offset {offset} overflows")))?;
+    let abs = base.checked_add(offset).ok_or_else(|| ParseMathError::Malformed(format!("{what} offset {offset} overflows")))?;
     if abs > data.len() {
         return Err(ParseMathError::Malformed(format!(
             "{what} offset {offset} resolves to {abs}, past the table length {}",
@@ -76,9 +66,7 @@ fn read_math_value(r: &mut Reader<'_>) -> Result<f32, ReadError> {
 /// Reject glyph IDs that cannot exist in a font with `num_glyphs` glyphs.
 fn check_glyph(glyph_id: u16, num_glyphs: Option<u16>, what: &'static str) -> Result<(), ParseMathError> {
     match num_glyphs {
-        Some(num_glyphs) if glyph_id >= num_glyphs => {
-            Err(ParseMathError::GlyphIdOutOfRange { glyph_id, num_glyphs, what })
-        }
+        Some(num_glyphs) if glyph_id >= num_glyphs => Err(ParseMathError::GlyphIdOutOfRange { glyph_id, num_glyphs, what }),
         _ => Ok(()),
     }
 }
@@ -98,20 +86,14 @@ fn parse_coverage(
     num_glyphs: Option<u16>,
     what: &'static str,
 ) -> Result<Vec<u16>, ParseMathError> {
-    let abs = base
-        .checked_add(offset)
-        .ok_or_else(|| ParseMathError::Malformed(format!("{what} coverage offset overflows")))?;
+    let abs = base.checked_add(offset).ok_or_else(|| ParseMathError::Malformed(format!("{what} coverage offset overflows")))?;
     let mut r = window(data, abs)?;
     let format = r.read_u16()?;
     match format {
         1 => {
             let count = r.read_u16()? as usize;
             if count > MAX_COVERAGE_GLYPHS {
-                return Err(ParseMathError::LimitExceeded {
-                    what: "coverage glyphs",
-                    count,
-                    max: MAX_COVERAGE_GLYPHS,
-                });
+                return Err(ParseMathError::LimitExceeded { what: "coverage glyphs", count, max: MAX_COVERAGE_GLYPHS });
             }
             let mut glyphs = Vec::with_capacity(count);
             for _ in 0..count {
@@ -129,9 +111,7 @@ fn parse_coverage(
                 let end_id = r.read_u16()?;
                 let _start_coverage_index = r.read_u16()?;
                 if end_id < start_id {
-                    return Err(ParseMathError::Malformed(format!(
-                        "{what} coverage range {start_id}..={end_id} is inverted"
-                    )));
+                    return Err(ParseMathError::Malformed(format!("{what} coverage range {start_id}..={end_id} is inverted")));
                 }
                 let span = end_id as usize - start_id as usize + 1;
                 if glyphs.len() + span > MAX_COVERAGE_GLYPHS {
@@ -311,7 +291,6 @@ pub struct MathConstants {
     pub display_operator_min_height: f32,
 
     // --- 51 MathValueRecords, specification order ---
-
     pub math_leading: f32,
     pub axis_height: f32,
     pub accent_base_height: f32,
@@ -492,9 +471,7 @@ pub struct MathKernTable {
 impl MathKernTable {
     /// Parse one `MathKern` subtable located at `base + offset`.
     fn parse_from(data: &[u8], base: usize, offset: usize, what: &'static str) -> Result<Self, ParseMathError> {
-        let abs = base
-            .checked_add(offset)
-            .ok_or_else(|| ParseMathError::Malformed(format!("{what} offset overflows")))?;
+        let abs = base.checked_add(offset).ok_or_else(|| ParseMathError::Malformed(format!("{what} offset overflows")))?;
         let mut r = window(data, abs)?;
         let height_count = r.read_u16()? as usize;
         if height_count > MAX_KERN_HEIGHTS {
@@ -615,22 +592,8 @@ impl MathGlyphInfo {
                 let bottom_left = sub.read_u16()? as usize;
                 insert_kern(&mut info.math_kern_top_right, data, sub_base, top_right, glyph_id, "MathKernTopRight")?;
                 insert_kern(&mut info.math_kern_top_left, data, sub_base, top_left, glyph_id, "MathKernTopLeft")?;
-                insert_kern(
-                    &mut info.math_kern_bottom_right,
-                    data,
-                    sub_base,
-                    bottom_right,
-                    glyph_id,
-                    "MathKernBottomRight",
-                )?;
-                insert_kern(
-                    &mut info.math_kern_bottom_left,
-                    data,
-                    sub_base,
-                    bottom_left,
-                    glyph_id,
-                    "MathKernBottomLeft",
-                )?;
+                insert_kern(&mut info.math_kern_bottom_right, data, sub_base, bottom_right, glyph_id, "MathKernBottomRight")?;
+                insert_kern(&mut info.math_kern_bottom_left, data, sub_base, bottom_left, glyph_id, "MathKernBottomLeft")?;
             }
         }
 
@@ -701,11 +664,7 @@ impl GlyphAssembly {
         let italics_correction = read_math_value(r)?;
         let part_count = r.read_u16()? as usize;
         if part_count > MAX_ASSEMBLY_PARTS {
-            return Err(ParseMathError::LimitExceeded {
-                what: "assembly parts",
-                count: part_count,
-                max: MAX_ASSEMBLY_PARTS,
-            });
+            return Err(ParseMathError::LimitExceeded { what: "assembly parts", count: part_count, max: MAX_ASSEMBLY_PARTS });
         }
         let mut parts = Vec::with_capacity(part_count);
         for _ in 0..part_count {

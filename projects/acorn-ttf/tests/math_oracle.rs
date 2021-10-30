@@ -184,11 +184,7 @@ const CAMBRIA_ASSEMBLIES: &[AssemblyExpectation] = &[
         character: '(',
         gid: 4666,
         italics_correction: 0.0,
-        parts: &[
-            (1737, 0.0, 300.0, 4733.0, 0),
-            (1736, 2500.0, 2500.0, 2501.0, 1),
-            (1735, 300.0, 0.0, 4733.0, 0),
-        ],
+        parts: &[(1737, 0.0, 300.0, 4733.0, 0), (1736, 2500.0, 2500.0, 2501.0, 1), (1735, 300.0, 0.0, 4733.0, 0)],
     },
     AssemblyExpectation {
         character: '{',
@@ -250,29 +246,19 @@ fn check_metrics(math: &MathTable, expected: &[GlyphMetrics]) {
 
 fn check_vertical(math: &MathTable, expected: &[VerticalConstruction]) {
     for construction in expected {
-        let ours = math
-            .variants
-            .vert_constructions
-            .get(&construction.gid)
-            .unwrap_or_else(|| panic!("no vertical construction for {} (glyph {})", construction.character, construction.gid));
+        let ours =
+            math.variants.vert_constructions.get(&construction.gid).unwrap_or_else(|| {
+                panic!("no vertical construction for {} (glyph {})", construction.character, construction.gid)
+            });
         assert!(
             math.variants.vert_coverages.contains(&construction.gid),
             "{} (glyph {}) is missing from the vertical coverage",
             construction.character,
             construction.gid
         );
-        assert_eq!(
-            ours.variants.len(),
-            construction.variants,
-            "vertical variant count for {}",
-            construction.character
-        );
+        assert_eq!(ours.variants.len(), construction.variants, "vertical variant count for {}", construction.character);
         let largest = ours.variants.last().expect("at least one variant");
-        assert_eq!(
-            largest.variant_glyph, construction.max_variant_gid,
-            "largest variant glyph for {}",
-            construction.character
-        );
+        assert_eq!(largest.variant_glyph, construction.max_variant_gid, "largest variant glyph for {}", construction.character);
         assert_eq!(
             largest.advance_measurement, construction.max_advance,
             "largest variant advance for {}",
@@ -367,9 +353,7 @@ fn cambria_math_matches_fonttools_oracle() {
     check_assemblies(&math, CAMBRIA_ASSEMBLIES);
 
     for (gid, corner_id, name, heights, kern_values) in CAMBRIA_KERNS {
-        let table = corner(&math, *corner_id)
-            .get(gid)
-            .unwrap_or_else(|| panic!("no {name} kern for glyph {gid}"));
+        let table = corner(&math, *corner_id).get(gid).unwrap_or_else(|| panic!("no {name} kern for glyph {gid}"));
         assert_eq!(table.correction_heights.as_slice(), *heights, "{name} heights for glyph {gid}");
         assert_eq!(table.kern_values.as_slice(), *kern_values, "{name} kerns for glyph {gid}");
     }

@@ -133,10 +133,8 @@ impl CmapTable {
         }
 
         let mut unified = HashMap::new();
-        let mut ranked: Vec<(u8, &CmapSubtable)> = subtables
-            .iter()
-            .filter_map(|sub| unicode_rank(sub.platform, sub.encoding).map(|rank| (rank, sub)))
-            .collect();
+        let mut ranked: Vec<(u8, &CmapSubtable)> =
+            subtables.iter().filter_map(|sub| unicode_rank(sub.platform, sub.encoding).map(|rank| (rank, sub))).collect();
         // Ascending precedence: the authoritative subtable is merged last and
         // therefore wins every duplicate codepoint.
         ranked.sort_by_key(|(rank, _)| *rank);
@@ -354,9 +352,8 @@ fn parse_format_12(r: &mut Reader<'_>) -> Result<HashMap<u32, u16>, ParseCmapErr
         let end = end_cp.min(MAX_UNICODE);
         for cp in start_cp..=end {
             let gid = start_glyph + (cp - start_cp);
-            let gid = u16::try_from(gid).map_err(|_| {
-                ParseCmapError::Malformed(format!("format 12 group {group} glyph id {gid} exceeds u16"))
-            })?;
+            let gid = u16::try_from(gid)
+                .map_err(|_| ParseCmapError::Malformed(format!("format 12 group {group} glyph id {gid} exceeds u16")))?;
             if gid != 0 {
                 map.insert(cp, gid);
             }
@@ -380,9 +377,8 @@ fn parse_format_13(r: &mut Reader<'_>) -> Result<HashMap<u32, u16>, ParseCmapErr
                 "format 13 group {group} starts at {start_cp:#X} above its end {end_cp:#X}"
             )));
         }
-        let gid = u16::try_from(raw_gid).map_err(|_| {
-            ParseCmapError::Malformed(format!("format 13 group {group} glyph id {raw_gid} exceeds u16"))
-        })?;
+        let gid = u16::try_from(raw_gid)
+            .map_err(|_| ParseCmapError::Malformed(format!("format 13 group {group} glyph id {raw_gid} exceeds u16")))?;
         if gid == 0 {
             continue;
         }

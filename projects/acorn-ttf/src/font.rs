@@ -215,10 +215,7 @@ impl FontFace {
         if self.math.is_none() {
             let num_glyphs = self.maxp().map(|maxp| maxp.num_glyphs);
             self.math = self.face.directory.get(b"MATH").and_then(|rec| {
-                self.face
-                    .table_data(rec)
-                    .ok()
-                    .and_then(|data| MathTable::parse_with_num_glyphs(data, num_glyphs).ok())
+                self.face.table_data(rec).ok().and_then(|data| MathTable::parse_with_num_glyphs(data, num_glyphs).ok())
             });
         }
         self.math.as_ref()
