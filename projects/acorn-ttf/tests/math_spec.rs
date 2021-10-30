@@ -9,7 +9,10 @@
 //! bad offsets, truncation, out-of-range glyph IDs and oversized structures
 //! produce structured errors instead of panicking or looping.
 //!
-//! Font assertions are skipped when the font file is absent.
+//! Font assertions are skipped with an explicit message when no font is
+//! available (see `common`).
+
+mod common;
 
 use acorn_ttf::{
     font::FontFace,
@@ -21,21 +24,6 @@ use acorn_ttf::{
 };
 use std::collections::HashMap;
 use ttf_parser::opentype_layout::Coverage;
-
-/// Latin Modern Math shipped with the VuTeX workspace.
-const LMM_PATH: &str = r#"E:\dxo 深度学习\VuTeX\projects\crates\vutex-text\assets\LatinModernMath-Regular.otf"#;
-/// TrueType-flavoured math font (face 1 of the Windows Cambria collection).
-const CAMBRIA_TTC_PATH: &str = r"C:\Windows\Fonts\cambria.ttc";
-
-fn read_font(path: &str) -> Option<Vec<u8>> {
-    match std::fs::read(path) {
-        Ok(data) => Some(data),
-        Err(_) => {
-            eprintln!("SKIP: font not available at {path}");
-            None
-        }
-    }
-}
 
 fn acorn_math(data: &[u8], face_index: usize) -> MathTable {
     let container = parse_font_validated(data).expect("container");
@@ -256,7 +244,7 @@ fn diff_font(data: &[u8], face_index: u32) {
 
 #[test]
 fn glyph_info_and_variants_match_ttf_parser_on_latin_modern_math() {
-    let Some(data) = read_font(LMM_PATH)
+    let Some(data) = common::latin_modern_math()
     else {
         return;
     };
@@ -282,7 +270,7 @@ fn glyph_info_and_variants_match_ttf_parser_on_latin_modern_math() {
 
 #[test]
 fn glyph_info_and_variants_match_ttf_parser_on_cambria_math() {
-    let Some(data) = read_font(CAMBRIA_TTC_PATH)
+    let Some(data) = common::cambria_math()
     else {
         return;
     };
