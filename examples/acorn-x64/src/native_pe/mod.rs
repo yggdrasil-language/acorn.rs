@@ -100,7 +100,8 @@ impl NativeImageBuilder {
             rdata[start..start + 8].copy_from_slice(&value.to_le_bytes());
         }
 
-        let image = NativePeImage { text: encoded.text, rdata, idata: idata.bytes, imports, entry_point };
+        let image =
+            NativePeImage { text: encoded.text, rdata, idata: idata.bytes, imports, exports: Vec::new(), is_dll: false, entry_point };
         NativePeWriter::write_executable(&image).map_err(|error| err!("{error}"))
     }
 }
