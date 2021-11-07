@@ -8,7 +8,8 @@ fn writes_amd64_console_executable() {
         idata: Vec::new(),
         imports: Vec::new(),
         exports: Vec::new(),
-        is_dll: false,
+        text_rel32_fixups: Vec::new(),
+            is_dll: false,
         entry_point: 0,
     };
     let bytes = NativePeWriter::write_executable(&image).expect("write pe");
@@ -37,7 +38,8 @@ fn writes_dll_with_export_directory() {
         idata: Vec::new(),
         imports: Vec::new(),
         exports: vec![NativeExport { name: "main".to_string(), offset: 0 }],
-        is_dll: true,
+        text_rel32_fixups: Vec::new(),
+            is_dll: true,
         entry_point: 0,
     };
     let bytes = NativePeWriter::write_executable(&image).expect("write dll");
@@ -70,7 +72,8 @@ fn loads_exported_function_from_dll_image() {
         idata: Vec::new(),
         imports: Vec::new(),
         exports: vec![NativeExport { name: "main".to_string(), offset: 0 }],
-        is_dll: true,
+        text_rel32_fixups: Vec::new(),
+            is_dll: true,
         entry_point: 0,
     };
     let bytes = NativePeWriter::write_executable(&image).expect("write dll");
@@ -93,6 +96,74 @@ fn loads_exported_function_from_dll_image() {
 
 #[test]
 #[cfg(windows)]
+fn resolves_imported_function_through_iat() {
+    use acorn_pe::pe::build_native_import_table;
+
+    unsafe extern "system" {
+        fn LoadLibraryA(name: *const u8) -> *mut core::ffi::c_void;
+        fn GetProcAddress(module: *mut core::ffi::c_void, name: *const u8) -> *mut core::ffi::c_void;
+        fn FreeLibrary(module: *mut core::ffi::c_void) -> i32;
+    }
+
+    // provider：导出 `nyar_probe`，`mov rax, 7; ret`。
+    let provider = NativePeImage {
+        text: vec![0x48, 0xB8, 7, 0, 0, 0, 0, 0, 0, 0, 0xC3],
+        rdata: Vec::new(),
+        idata: Vec::new(),
+        imports: Vec::new(),
+        exports: vec![NativeExport { name: "nyar_probe".to_string(), offset: 0 }],
+        text_rel32_fixups: Vec::new(),
+        is_dll: true,
+        entry_point: 0,
+    };
+    let provider_bytes = NativePeWriter::write_executable(&provider).expect("write provider");
+
+    // consumer：`call [rip+disp32]`（FF 15 disp32）+ `ret`，汇入导入表的 IAT 槽。
+    let table = build_native_import_table(&[("nyar_import_provider".to_string(), "nyar_probe".to_string())]).expect("import table");
+    let slot = *table.slot_offsets.get(&("nyar_import_provider".to_string(), "nyar_probe".to_string())).expect("slot");
+    let consumer = NativePeImage {
+        text: vec![0xFF, 0x15, 0, 0, 0, 0, 0xC3],
+        rdata: Vec::new(),
+        idata: table.bytes,
+        imports: table.imports,
+        exports: vec![NativeExport { name: "main".to_string(), offset: 0 }],
+        text_rel32_fixups: vec![(2, slot)],
+        is_dll: true,
+        entry_point: 0,
+    };
+    let consumer_bytes = NativePeWriter::write_executable(&consumer).expect("write consumer");
+
+    let dir = std::env::temp_dir().join(format!("nyar-import-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("import temp dir");
+    // 导入表按模块名解析（`nyar_import_provider.dll`），文件名必须一致。
+    let provider_path = dir.join("nyar_import_provider.dll");
+    let consumer_path = dir.join("nyar_import_consumer.dll");
+    std::fs::write(&provider_path, &provider_bytes).expect("write provider file");
+    std::fs::write(&consumer_path, &consumer_bytes).expect("write consumer file");
+    let mut provider_name = provider_path.to_string_lossy().into_owned().into_bytes();
+    provider_name.push(0);
+    let mut consumer_name = consumer_path.to_string_lossy().into_owned().into_bytes();
+    consumer_name.push(0);
+
+    unsafe {
+        let provider_module = LoadLibraryA(provider_name.as_ptr());
+        assert!(!provider_module.is_null(), "provider load failed");
+        let consumer_module = LoadLibraryA(consumer_name.as_ptr());
+        assert!(!consumer_module.is_null(), "consumer load failed (import table must resolve)");
+        let symbol = GetProcAddress(consumer_module, b"main\0".as_ptr());
+        assert!(!symbol.is_null(), "consumer export missing");
+        let main: extern "system" fn() -> i64 = std::mem::transmute(symbol);
+        assert_eq!(main(), 7, "call through IAT must reach the imported function");
+        FreeLibrary(consumer_module);
+        FreeLibrary(provider_module);
+    }
+    let _ = std::fs::remove_file(&consumer_path);
+    let _ = std::fs::remove_file(&provider_path);
+    let _ = std::fs::remove_dir(&dir);
+}
+
+#[test]
+#[cfg(windows)]
 fn runs_stub_executable() {
     let image = NativePeImage {
         text: vec![0x31, 0xC0, 0xC3],
@@ -100,7 +171,8 @@ fn runs_stub_executable() {
         idata: Vec::new(),
         imports: Vec::new(),
         exports: Vec::new(),
-        is_dll: false,
+        text_rel32_fixups: Vec::new(),
+            is_dll: false,
         entry_point: 0,
     };
     let bytes = NativePeWriter::write_executable(&image).expect("write pe");

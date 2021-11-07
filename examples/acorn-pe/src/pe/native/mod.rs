@@ -36,6 +36,108 @@ pub struct NativeDllImport {
     pub functions: Vec<String>,
 }
 
+/// 已构造的导入表：`.idata` 字节、按 DLL 归组的描述与 IAT 槽偏移。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NativeImportTable {
+    /// `.idata` 字节（段内偏移尚未加 `idata_rva`）。
+    pub bytes: Vec<u8>,
+    /// 按首次出现顺序归组的导入描述。
+    pub imports: Vec<NativeDllImport>,
+    /// `(dll, function)` → IAT 槽在 `.idata` 内的偏移。
+    pub slot_offsets: std::collections::BTreeMap<(String, String), u32>,
+}
+
+/// 按 `(dll, function)` 顺序构造导入表。
+///
+/// 布局：描述符数组 → 每个 DLL 的名字与 hint/name → 每个 DLL 的 ILT → 每个 DLL 的 IAT。
+/// 写入器据此把段内偏移补成 RVA；调用方用 [`NativeImportTable::slot_offsets`] 生成
+/// `call [rip+disp32]` 的文本修复项。
+pub fn build_native_import_table(order: &[(String, String)]) -> Result<NativeImportTable, NativePeWriteError> {
+    use std::collections::{BTreeMap, BTreeSet};
+
+    if order.is_empty() {
+        return Ok(NativeImportTable { bytes: Vec::new(), imports: Vec::new(), slot_offsets: BTreeMap::new() });
+    }
+
+    let mut dll_order = Vec::new();
+    let mut seen = BTreeSet::new();
+    let mut grouped: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for (dll, function) in order {
+        if seen.insert(dll.clone()) {
+            dll_order.push(dll.clone());
+        }
+        grouped.entry(dll.clone()).or_default().push(function.clone());
+    }
+    let imports: Vec<NativeDllImport> =
+        dll_order.into_iter().map(|dll| NativeDllImport { functions: grouped.remove(&dll).unwrap_or_default(), dll }).collect();
+
+    let mut bytes = Vec::new();
+    let descriptor_bytes = (imports.len() + 1) * 20;
+    bytes.resize(descriptor_bytes, 0);
+
+    let mut dll_name_offsets = Vec::new();
+    let mut hint_name_offsets = Vec::new();
+    for import in &imports {
+        dll_name_offsets.push(u32::try_from(bytes.len()).map_err(|_| NativePeWriteError::SizeOverflow("`.idata`"))?);
+        let dll = normalize_dll_name(&import.dll);
+        bytes.extend_from_slice(dll.as_bytes());
+        bytes.push(0);
+        align2(&mut bytes);
+        for function in &import.functions {
+            hint_name_offsets.push(u32::try_from(bytes.len()).map_err(|_| NativePeWriteError::SizeOverflow("`.idata`"))?);
+            bytes.extend_from_slice(&0u16.to_le_bytes());
+            bytes.extend_from_slice(function.as_bytes());
+            bytes.push(0);
+            align2(&mut bytes);
+        }
+    }
+
+    let mut ilt_offsets = Vec::new();
+    let mut hint_cursor = 0usize;
+    for import in &imports {
+        ilt_offsets.push(u32::try_from(bytes.len()).map_err(|_| NativePeWriteError::SizeOverflow("`.idata`"))?);
+        for _ in &import.functions {
+            bytes.extend_from_slice(&(hint_name_offsets[hint_cursor] as u64).to_le_bytes());
+            hint_cursor += 1;
+        }
+        bytes.extend_from_slice(&0u64.to_le_bytes());
+    }
+
+    let mut iat_offsets = Vec::new();
+    let mut slot_offsets = BTreeMap::new();
+    hint_cursor = 0;
+    for import in &imports {
+        iat_offsets.push(u32::try_from(bytes.len()).map_err(|_| NativePeWriteError::SizeOverflow("`.idata`"))?);
+        for function in &import.functions {
+            let hint = hint_name_offsets[hint_cursor];
+            let offset = u32::try_from(bytes.len()).map_err(|_| NativePeWriteError::SizeOverflow("`.idata`"))?;
+            slot_offsets.insert((import.dll.clone(), function.clone()), offset);
+            bytes.extend_from_slice(&(hint as u64).to_le_bytes());
+            hint_cursor += 1;
+        }
+        bytes.extend_from_slice(&0u64.to_le_bytes());
+    }
+
+    for (dll_index, _) in imports.iter().enumerate() {
+        let offset = dll_index * 20;
+        bytes[offset..offset + 4].copy_from_slice(&ilt_offsets[dll_index].to_le_bytes());
+        bytes[offset + 12..offset + 16].copy_from_slice(&dll_name_offsets[dll_index].to_le_bytes());
+        bytes[offset + 16..offset + 20].copy_from_slice(&iat_offsets[dll_index].to_le_bytes());
+    }
+
+    Ok(NativeImportTable { bytes, imports, slot_offsets })
+}
+
+fn normalize_dll_name(dll: &str) -> String {
+    if dll.to_ascii_lowercase().ends_with(".dll") { dll.to_ascii_lowercase() } else { format!("{}.dll", dll.to_ascii_lowercase()) }
+}
+
+fn align2(bytes: &mut Vec<u8>) {
+    if bytes.len() % 2 != 0 {
+        bytes.push(0);
+    }
+}
+
 /// 单个导出符号描述。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NativeExport {
@@ -58,6 +160,10 @@ pub struct NativePeImage {
     pub imports: Vec<NativeDllImport>,
     /// 导出符号（写入 `.edata`；非空时镜像必须按 DLL 写出）。
     pub exports: Vec<NativeExport>,
+    /// 文本内的 `rel32` 修复项：`(字段在 .text 内的偏移, 目标在 .idata 内的偏移)`。
+    ///
+    /// 用于 `call [rip+disp32]` 这类对 IAT 槽的调用；写入器按最终节布局回填位移。
+    pub text_rel32_fixups: Vec<(u32, u32)>,
     /// 是否按 `DLL` 写出（`DLL` 标志、无入口点）。
     pub is_dll: bool,
     /// 入口点在 `.text` 内的偏移。
@@ -98,6 +204,25 @@ impl NativePeWriter {
         }
         let export_directory_rva = layout.edata.map(|section| section.rva).unwrap_or(0);
 
+        let mut text = image.text.clone();
+        if !image.text_rel32_fixups.is_empty() {
+            let Some(idata_section) = layout.idata
+            else {
+                return Err(NativePeWriteError::SizeOverflow("导入修复项（缺少 `.idata`）"));
+            };
+            for (field, target) in &image.text_rel32_fixups {
+                let field = *field as usize;
+                if field + 4 > text.len() {
+                    return Err(NativePeWriteError::SizeOverflow("导入修复项（字段越界）"));
+                }
+                let displacement = (idata_section.rva as i64 + i64::from(*target))
+                    - (layout.text.rva as i64 + field as i64 + 4);
+                let displacement = i32::try_from(displacement)
+                    .map_err(|_| NativePeWriteError::SizeOverflow("导入修复项（rel32 越界）"))?;
+                text[field..field + 4].copy_from_slice(&displacement.to_le_bytes());
+            }
+        }
+
         let entry_rva = if image.is_dll { 0 } else { layout.text.rva + image.entry_point };
         let mut writer = PeBinaryWriter::new();
         write_dos_header(&mut writer);
@@ -128,7 +253,7 @@ impl NativePeWriter {
         }
 
         pad_to(&mut writer, layout.size_of_headers as usize);
-        writer.write_bytes(&image.text);
+        writer.write_bytes(&text);
         pad_to(&mut writer, (layout.text.raw_ptr + layout.text.raw_size) as usize);
         if let Some(rdata) = layout.rdata {
             writer.write_bytes(&image.rdata);
