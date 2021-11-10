@@ -43,6 +43,12 @@ fn writes_et_dyn_x86_64_with_every_export() {
     let haystack = String::from_utf8_lossy(&bytes);
     assert!(haystack.contains("answer"));
     assert!(haystack.contains("seven"));
+
+    // 首个 `PT_LOAD` 必须覆盖整份文件，否则动态表（hash/dynsym/dynstr/dynamic）
+    // 落在未映射页，宿主 `dlopen` 会读到段外。
+    let phoff = u64::from_le_bytes(bytes[32..40].try_into().expect("e_phoff")) as usize;
+    let p_filesz = u64::from_le_bytes(bytes[phoff + 32..phoff + 40].try_into().expect("p_filesz"));
+    assert_eq!(p_filesz, bytes.len() as u64, "PT_LOAD 必须覆盖整份文件");
 }
 
 /// 真实装载：Linux `dlopen` 后 `dlsym` 必须解析**每一个**导出符号。

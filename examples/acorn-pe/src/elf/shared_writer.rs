@@ -143,11 +143,13 @@ impl SharedElfWriter {
 
         let mut out = Vec::with_capacity(file_size as usize);
         write_ehdr(&mut out, phnum, file_size, dynamic_off, load_vaddr, machine);
-        write_phdr_load(&mut out, 0, hash_off, load_vaddr, PF_R | PF_X);
+        // 首个 `PT_LOAD` 必须覆盖整个文件：`.hash`/`.dynsym`/`.dynstr`/`.dynamic`
+        // 都靠 `PT_DYNAMIC` 的虚地址访问，落在段外会让宿主装载时读取未映射页。
+        write_phdr_load(&mut out, 0, u64::from(file_size), load_vaddr, PF_R | PF_X);
         if bss_len > 0 {
-            write_phdr_load(&mut out, bss_off, bss_len, bss_vaddr, PF_R | PF_W);
+            write_phdr_load(&mut out, u64::from(bss_off), u64::from(bss_len), bss_vaddr, PF_R | PF_W);
         }
-        write_phdr_dynamic(&mut out, dynamic_off, dynamic_len, load_vaddr + u64::from(dynamic_off));
+        write_phdr_dynamic(&mut out, u64::from(dynamic_off), u64::from(dynamic_len), load_vaddr + u64::from(dynamic_off));
 
         pad_to(&mut out, text_off as usize);
         out.extend_from_slice(&image.text);
@@ -200,25 +202,27 @@ fn write_ehdr(out: &mut Vec<u8>, phnum: u16, _file_size: u32, dynamic_off: u32, 
     let _ = dynamic_off;
 }
 
-fn write_phdr_load(out: &mut Vec<u8>, offset: u32, filesz: u32, vaddr: u64, flags: u32) {
+/// `Elf64_Phdr` 的 `p_offset`/`p_vaddr`/`p_paddr`/`p_filesz`/`p_memsz` 都是 8 字节；
+/// 少写半宽会让后续每个程序头整体错位，宿主按 `e_phoff` 解出无效段。
+fn write_phdr_load(out: &mut Vec<u8>, offset: u64, filesz: u64, vaddr: u64, flags: u32) {
     out.extend_from_slice(&PT_LOAD.to_le_bytes());
     out.extend_from_slice(&flags.to_le_bytes());
     out.extend_from_slice(&offset.to_le_bytes());
     out.extend_from_slice(&vaddr.to_le_bytes());
     out.extend_from_slice(&vaddr.to_le_bytes());
-    out.extend_from_slice(&(filesz as u64).to_le_bytes());
-    out.extend_from_slice(&(filesz as u64).to_le_bytes());
+    out.extend_from_slice(&filesz.to_le_bytes());
+    out.extend_from_slice(&filesz.to_le_bytes());
     out.extend_from_slice(&0x1000u64.to_le_bytes());
 }
 
-fn write_phdr_dynamic(out: &mut Vec<u8>, offset: u32, filesz: u32, vaddr: u64) {
+fn write_phdr_dynamic(out: &mut Vec<u8>, offset: u64, filesz: u64, vaddr: u64) {
     out.extend_from_slice(&PT_DYNAMIC.to_le_bytes());
     out.extend_from_slice(&(PF_R).to_le_bytes());
     out.extend_from_slice(&offset.to_le_bytes());
     out.extend_from_slice(&vaddr.to_le_bytes());
     out.extend_from_slice(&vaddr.to_le_bytes());
-    out.extend_from_slice(&(filesz as u64).to_le_bytes());
-    out.extend_from_slice(&(filesz as u64).to_le_bytes());
+    out.extend_from_slice(&filesz.to_le_bytes());
+    out.extend_from_slice(&filesz.to_le_bytes());
     out.extend_from_slice(&0x8u64.to_le_bytes());
 }
 
