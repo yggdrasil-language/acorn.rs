@@ -121,6 +121,7 @@ around.
 | [`acorn-wasm`](./examples/acorn-wasm)       | WebAssembly binary module model                      |
 | [`acorn-jvm`](./examples/acorn-jvm)         | JVM `class` and `JAR` binary format                  |
 | [`acorn-dex`](./examples/acorn-dex)         | Android DEX (`dex/035`) binary format                |
+| [`acorn-spirv`](./examples/acorn-spirv)     | SPIR-V module layout and structural validation       |
 | [`acorn-tvm`](./examples/acorn-tvm)         | TextVM `.tvm` regex engine artifact format           |
 | [`acorn-x64`](./examples/acorn-x64)         | x86-64 instruction encoding and native PE/ELF images |
 | [`acorn-aarch64`](./examples/acorn-aarch64) | AArch64 instruction encoding and Android JNI glue    |

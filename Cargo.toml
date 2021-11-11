@@ -12,6 +12,7 @@ default-members = [
     "projects/acorn-tar",
     "examples/acorn-docx",
     "examples/acorn-epub",
+    "examples/acorn-spirv",
 ]
 exclude = [
     "projects/.DS_Store",
@@ -45,6 +46,7 @@ acorn-wasm = { path = "examples/acorn-wasm" }
 acorn-jvm = { path = "examples/acorn-jvm" }
 acorn-pe = { path = "examples/acorn-pe" }
 acorn-odin = { path = "examples/acorn-odin" }
+acorn-spirv = { path = "examples/acorn-spirv" }
 
 oak-core = { git = "https://github.com/yggdrasil-language/oaks.git", rev = "541b204a3d6fe2806dea1f905736261bf1d0b4ae", default-features = false, features = ["serde"] }
 oak-xml = { git = "https://github.com/yggdrasil-language/oaks.git", rev = "541b204a3d6fe2806dea1f905736261bf1d0b4ae", default-features = false, features = ["serde"] }

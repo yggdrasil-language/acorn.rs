@@ -22,6 +22,7 @@ A collection of binary format crates and end-to-end samples built on the Acorn c
 | [acorn-wasm](./acorn-wasm) | WebAssembly binary module model |
 | [acorn-jvm](./acorn-jvm) | JVM `class` and `JAR` binary format |
 | [acorn-dex](./acorn-dex) | Android DEX (`dex/035`) binary format |
+| [acorn-spirv](./acorn-spirv) | SPIR-V module layout and structural validation |
 | [acorn-tvm](./acorn-tvm) | TextVM `.tvm` regex engine artifact format |
 
 ### Machine Code
