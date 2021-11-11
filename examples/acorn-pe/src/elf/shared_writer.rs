@@ -27,6 +27,7 @@ const EM_AARCH64: u16 = 183;
 const EM_X86_64: u16 = 62;
 const PT_LOAD: u32 = 1;
 const PT_DYNAMIC: u32 = 2;
+const PT_GNU_STACK: u32 = 0x6474_e551;
 const PF_R: u32 = 4;
 const PF_W: u32 = 2;
 const PF_X: u32 = 1;
@@ -94,7 +95,8 @@ impl SharedElfWriter {
         let rodata_len = align_up(image.rodata.len() as u32, 16);
         let bss_len = align_up(image.bss.len() as u32, 16);
 
-        let phnum: u16 = if bss_len > 0 { 3 } else { 2 };
+        // 程序头：PT_LOAD +（可选 PT_LOAD bss）+ PT_DYNAMIC + PT_GNU_STACK。
+        let phnum: u16 = if bss_len > 0 { 4 } else { 3 };
         let headers = ELF_EHDR_SIZE + ELF_PHDR_SIZE * u32::from(phnum);
         let text_off = align_up(headers, 16);
         let rodata_off = if rodata_len == 0 { 0 } else { text_off + text_len };
@@ -150,6 +152,10 @@ impl SharedElfWriter {
             write_phdr_load(&mut out, u64::from(bss_off), u64::from(bss_len), bss_vaddr, PF_R | PF_W);
         }
         write_phdr_dynamic(&mut out, u64::from(dynamic_off), u64::from(dynamic_len), load_vaddr + u64::from(dynamic_off));
+        // 显式声明**不可执行栈**：缺 PT_GNU_STACK 时 glibc 认为对象要求可执行栈，
+        // 在加固宿主（含 Rust 测试线程）上 `_dl_make_stack_executable` 会失败，
+        // 导致 `dlopen` 报 "cannot enable executable stack"。
+        write_phdr_gnu_stack(&mut out);
 
         pad_to(&mut out, text_off as usize);
         out.extend_from_slice(&image.text);
@@ -213,6 +219,18 @@ fn write_phdr_load(out: &mut Vec<u8>, offset: u64, filesz: u64, vaddr: u64, flag
     out.extend_from_slice(&filesz.to_le_bytes());
     out.extend_from_slice(&filesz.to_le_bytes());
     out.extend_from_slice(&0x1000u64.to_le_bytes());
+}
+
+/// `PT_GNU_STACK`：文件不占用、运行时按 `PF_R | PF_W`（不可执行）的栈。
+fn write_phdr_gnu_stack(out: &mut Vec<u8>) {
+    out.extend_from_slice(&PT_GNU_STACK.to_le_bytes());
+    out.extend_from_slice(&(PF_R | PF_W).to_le_bytes());
+    out.extend_from_slice(&0u64.to_le_bytes());
+    out.extend_from_slice(&0u64.to_le_bytes());
+    out.extend_from_slice(&0u64.to_le_bytes());
+    out.extend_from_slice(&0u64.to_le_bytes());
+    out.extend_from_slice(&0u64.to_le_bytes());
+    out.extend_from_slice(&16u64.to_le_bytes());
 }
 
 fn write_phdr_dynamic(out: &mut Vec<u8>, offset: u64, filesz: u64, vaddr: u64) {
