@@ -11,6 +11,9 @@
   each instruction is read, so instruction bodies stay unread until a consumer asks for them.
 - **Structural validation**: `validate_spirv` and `SpirvModule::validate` return a `SpirvSummary` for a structurally
   valid module, or a classified `SpirvLayoutError` that keeps the starting word offset and byte range of the failure.
+- **Byte-slice entry**: `validate_spirv_bytes(&[u8])` wraps the slice in an in-memory source and a default ledger, so a
+  caller that only emits or loads bytes never names an Acorn source or budget type. Failures stay typed as
+  `SpirvByteError`.
 
 ## 🚧 Boundary
 
@@ -29,10 +32,14 @@ Every layout failure carries `SpirvEvidence`, a starting 32-bit word offset toge
 A declared `bound` of zero, or one above the universal `0x3FFFFF` id bound, is reported as `SpirvBoundSuspicion` and
 recorded as read: it is never silently accepted as valid and never panics.
 
+`SpirvByteError` keeps the typed `SpirvLayoutError` it came from, and gives budget exhaustion and source read failures
+their own variants instead of a message string.
+
 ## 🔗 Ecosystem
 
 Reads go through `acorn_source::ByteSource` and every read is settled against the caller's
 `acorn_core::BudgetTracker`, so a module is loaded under the same allowance as the rest of a parse session.
+`validate_spirv_bytes` supplies both for callers without Acorn types at hand.
 
 ## 🤝 Contributing
 

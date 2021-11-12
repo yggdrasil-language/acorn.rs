@@ -1,11 +1,14 @@
 #![warn(missing_docs)]
 #![doc = include_str!("../readme.md")]
 
+mod bytes;
 mod error;
 mod header;
 mod instruction;
 mod module;
 
+/// Byte-slice validation entry and its error surface.
+pub use bytes::{SpirvByteError, validate_spirv_bytes};
 /// Structural failure classification and its byte evidence.
 pub use error::{SpirvEvidence, SpirvLayoutError};
 /// Header constants and the recorded id bound.
