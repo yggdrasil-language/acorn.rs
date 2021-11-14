@@ -7,5 +7,5 @@ mod writer;
 
 pub use layout::ElfSectionLayout;
 pub use read::{Elf64Header, Elf64ParseError, parse_elf64};
-pub use shared_writer::{SharedElfImage, SharedElfWriter, SharedObjectExport};
+pub use shared_writer::{SharedElfImage, SharedElfImport, SharedElfWriteError, SharedElfWriter, SharedObjectExport};
 pub use writer::{ElfWriteError, NativeElfImage, NativeElfWriter};
