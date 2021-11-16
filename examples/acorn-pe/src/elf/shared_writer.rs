@@ -222,7 +222,10 @@ impl SharedElfWriter {
         }
         for call in calls {
             if call.import as usize >= imports.len() {
-                return Err(SharedElfWriteError::ImportIndexOutOfRange { import: call.import, import_count: imports.len() as u32 });
+                return Err(SharedElfWriteError::ImportIndexOutOfRange {
+                    import: call.import,
+                    import_count: imports.len() as u32,
+                });
             }
         }
 
@@ -368,14 +371,7 @@ impl SharedElfWriter {
 
         write_hash(&mut out, sym_count);
         pad_to(&mut out, dynsym_off as usize);
-        write_dynsym(
-            &mut out,
-            exports,
-            &export_name_offsets,
-            imports,
-            &import_name_offsets,
-            load_vaddr + u64::from(text_off),
-        );
+        write_dynsym(&mut out, exports, &export_name_offsets, imports, &import_name_offsets, load_vaddr + u64::from(text_off));
         out.extend_from_slice(&dynstr);
 
         if rela_off > 0 {
