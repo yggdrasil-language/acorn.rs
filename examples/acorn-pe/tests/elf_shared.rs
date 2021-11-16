@@ -1,6 +1,6 @@
 use acorn_pe::elf::{
-    SharedElfDataReference, SharedElfDataRelocation, SharedElfImage, SharedElfImportCall, SharedElfWriter, SharedObjectExport,
-    parse_elf64,
+    SharedElfDataReference, SharedElfDataRelocation, SharedElfDataTarget, SharedElfImage, SharedElfImportCall, SharedElfWriter,
+    SharedObjectExport, parse_elf64,
 };
 
 fn image(text: Vec<u8>) -> SharedElfImage {
@@ -233,7 +233,7 @@ fn image_with_pointer_data() -> (SharedElfImage, Vec<SharedObjectExport>, Vec<Sh
         SharedObjectExport { name: "answer".into(), text_offset: 16 },
     ];
     // 加数 16 是本镜像内 `answer` 的虚拟地址（`p_vaddr == 文件偏移`）。
-    let relocations = vec![SharedElfDataRelocation { offset: 0, addend: 16 }];
+    let relocations = vec![SharedElfDataRelocation { offset: 0, target: SharedElfDataTarget::Text(16) }];
     let references = vec![SharedElfDataReference { rel32_field: 2, data_offset: 0 }];
     (image, exports, relocations, references)
 }

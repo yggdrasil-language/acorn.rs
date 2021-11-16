@@ -30,6 +30,13 @@ pub enum SharedElfWriteError {
         /// `.data` 实际长度。
         data_len: u32,
     },
+    /// 数据段自相对指针指向 `.text` 之外。
+    TextOutOfRange {
+        /// 声明的 `.text` 偏移。
+        offset: u32,
+        /// `.text` 实际长度。
+        text_len: u32,
+    },
     /// `rel32` 自相对位移超出可编码范围（镜像过大或布局非法）。
     Rel32Overflow {
         /// 发生溢出的字段偏移。
@@ -50,6 +57,9 @@ impl fmt::Display for SharedElfWriteError {
             }
             Self::DataOutOfRange { offset, data_len } => {
                 write!(f, "`.data` 偏移 {offset} 超出数据段长度 {data_len}")
+            }
+            Self::TextOutOfRange { offset, text_len } => {
+                write!(f, "数据段指针目标 {offset} 超出 `.text` 长度 {text_len}")
             }
             Self::Rel32Overflow { field } => write!(f, "字段 {field} 的 `rel32` 自相对位移无法编码"),
         }
@@ -111,14 +121,26 @@ pub struct SharedElfImportCall {
     pub import: u32,
 }
 
+/// `.data` 段自相对指针的目标。
+///
+/// 镜像按位置无关布局（`p_vaddr == 文件偏移`）生成，但数据段起点由写出器按页
+/// 对齐决定，调用方无法提前知道最终虚拟地址；因此目标按「节 + 节内偏移」声明，
+/// 由写出器换算成 `R_X86_64_RELATIVE` 的加数。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SharedElfDataTarget {
+    /// 指向 `.text` 内偏移（例如导出函数地址）。
+    Text(u32),
+    /// 指向 `.data` 内偏移（例如模块名或常量名）。
+    Data(u32),
+}
+
 /// `.data` 段内需要写入的自相对指针（`R_X86_64_RELATIVE`）。
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SharedElfDataRelocation {
     /// 8 字节指针字段在 `.data` 内的偏移。
     pub offset: u32,
-    /// 相对镜像基址的加数；镜像按位置无关布局（`p_vaddr == 文件偏移`）生成，
-    /// 因此指向本镜像的 `.text`/`.data` 时直接取目标虚拟地址。
-    pub addend: i64,
+    /// 指针指向的镜像内目标。
+    pub target: SharedElfDataTarget,
 }
 
 /// `.text` 内指向 `.data` 的自相对地址引用（`lea reg, [rip+disp32]` 等）。
@@ -325,6 +347,15 @@ impl SharedElfWriter {
                     data_len: image.data.len() as u32,
                 });
             }
+            match relocation.target {
+                SharedElfDataTarget::Text(offset) if offset as usize >= image.text.len() => {
+                    return Err(SharedElfWriteError::TextOutOfRange { offset, text_len: image.text.len() as u32 });
+                }
+                SharedElfDataTarget::Data(offset) if offset as usize >= image.data.len() => {
+                    return Err(SharedElfWriteError::DataOutOfRange { offset, data_len: image.data.len() as u32 });
+                }
+                _ => {}
+            }
         }
         pad_to(&mut out, text_off as usize);
         out.extend_from_slice(&text);
@@ -354,7 +385,11 @@ impl SharedElfWriter {
                 write_rela(&mut out, u64::from(got_off) + 8 * index as u64, (symbol << 32) | u64::from(R_X86_64_GLOB_DAT), 0);
             }
             for relocation in data_relocations {
-                write_rela(&mut out, u64::from(rw_off) + u64::from(relocation.offset), u64::from(R_X86_64_RELATIVE), relocation.addend);
+                let addend = match relocation.target {
+                    SharedElfDataTarget::Text(offset) => i64::from(text_off) + i64::from(offset),
+                    SharedElfDataTarget::Data(offset) => i64::from(rw_off) + i64::from(offset),
+                };
+                write_rela(&mut out, u64::from(rw_off) + u64::from(relocation.offset), u64::from(R_X86_64_RELATIVE), addend);
             }
         }
 
