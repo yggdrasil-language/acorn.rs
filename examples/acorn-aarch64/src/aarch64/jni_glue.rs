@@ -191,7 +191,7 @@ pub fn merge_jni_and_logic(
     }
 
     let bss = vec![0u8; jni.bss_size as usize];
-    Ok((SharedElfImage { text: jni.module.text, rodata, bss }, exports))
+    Ok((SharedElfImage { text: jni.module.text, rodata, data: Vec::new(), bss }, exports))
 }
 
 struct Rodata {

@@ -94,7 +94,7 @@ impl NativeElfImageBuilder {
             let start = *offset as usize;
             rodata[start..start + 8].copy_from_slice(&value.to_le_bytes());
         }
-        let image = SharedElfImage { text: encoded.text, rodata, bss: Vec::new() };
+        let image = SharedElfImage { text: encoded.text, rodata, data: Vec::new(), bss: Vec::new() };
         SharedElfWriter::write_aarch64(&image, exports).map_err(|error| err!("{error}"))
     }
 }
