@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["projects/*", "examples/*"]
+members = ["projects/*", "examples/*", "examples/acorn-dxbc"]
 default-members = [
     "projects/acorn-core",
     "projects/acorn-source",
@@ -47,6 +47,7 @@ acorn-jvm = { path = "examples/acorn-jvm" }
 acorn-pe = { path = "examples/acorn-pe" }
 acorn-odin = { path = "examples/acorn-odin" }
 acorn-spirv = { path = "examples/acorn-spirv" }
+acorn-dxbc = { path = "examples/acorn-dxbc" }
 
 oak-core = { git = "https://github.com/yggdrasil-language/oaks.git", rev = "541b204a3d6fe2806dea1f905736261bf1d0b4ae", default-features = false, features = ["serde"] }
 oak-xml = { git = "https://github.com/yggdrasil-language/oaks.git", rev = "541b204a3d6fe2806dea1f905736261bf1d0b4ae", default-features = false, features = ["serde"] }
