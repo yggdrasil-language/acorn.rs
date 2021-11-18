@@ -41,9 +41,9 @@ pub struct ShexProgram<'a, S: ByteSource + ?Sized> {
 impl<'a, S: ByteSource + ?Sized> ShexProgram<'a, S> {
     /// Reads the token pair of one shader chunk and bounds its instruction stream.
     ///
-    /// The length token must equal the chunk payload size, and the payload after
-    /// the tokens must be a whole number of 32-bit words. The instructions
-    /// themselves are not walked here.
+    /// The length token counts 32-bit DWORDs, so `length_token * 4` must equal the
+    /// byte-sized chunk payload, and the payload after the tokens must be a whole
+    /// number of DWORDs. The instructions themselves are not walked here.
     pub fn open(source: &'a S, ledger: &mut BudgetTracker, chunk: &DxbcChunk) -> Result<Self, DxbcLayoutError> {
         let chunk_index = chunk.index;
         let chunk_size = u64::from(chunk.size);
@@ -61,15 +61,6 @@ impl<'a, S: ByteSource + ?Sized> ShexProgram<'a, S> {
         let version_token = u32::from_le_bytes(tokens[0..4].try_into().expect("4-byte version token"));
         let length_token = u32::from_le_bytes(tokens[4..8].try_into().expect("4-byte length token"));
 
-        if length_token != chunk.size {
-            return Err(DxbcLayoutError::ShaderLengthMismatch {
-                chunk_index,
-                declared: length_token,
-                chunk_size: chunk.size,
-                evidence: DxbcEvidence::chunk(chunk_index, ByteRange { start: tokens_start + 4, len: 4 }),
-            });
-        }
-
         let stream_bytes = chunk_size - SHEX_HEADER_BYTES;
         let remainder_bytes = stream_bytes % DXBC_WORD_BYTES;
         if remainder_bytes != 0 {
@@ -77,6 +68,16 @@ impl<'a, S: ByteSource + ?Sized> ShexProgram<'a, S> {
             return Err(DxbcLayoutError::TrailingPartialWord {
                 remainder_bytes,
                 evidence: DxbcEvidence::chunk(chunk_index, ByteRange { start, len: remainder_bytes }),
+            });
+        }
+
+        let declared_bytes = u64::from(length_token) * DXBC_WORD_BYTES;
+        if declared_bytes != chunk_size {
+            return Err(DxbcLayoutError::ShaderLengthMismatch {
+                chunk_index,
+                declared: length_token,
+                chunk_size: chunk.size,
+                evidence: DxbcEvidence::chunk(chunk_index, ByteRange { start: tokens_start + 4, len: 4 }),
             });
         }
 
@@ -100,7 +101,7 @@ impl<'a, S: ByteSource + ?Sized> ShexProgram<'a, S> {
         self.version_token
     }
 
-    /// Length token, equal to the chunk payload size for a valid program.
+    /// Length token, in 32-bit DWORDs, covering the whole chunk payload.
     pub const fn length_token(&self) -> u32 {
         self.length_token
     }

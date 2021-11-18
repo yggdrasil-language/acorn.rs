@@ -124,12 +124,15 @@ pub enum DxbcLayoutError {
         evidence: DxbcEvidence,
     },
     /// A `SHEX`/`SHDR` length token disagrees with the chunk size.
+    ///
+    /// The token counts 32-bit DWORDs while the chunk header declares bytes, so a
+    /// valid chunk satisfies `declared * 4 == chunk_size`.
     ShaderLengthMismatch {
         /// Index of the offending chunk.
         chunk_index: u32,
-        /// Length token recorded by the shader chunk.
+        /// Length token recorded by the shader chunk, in 32-bit DWORDs.
         declared: u32,
-        /// Payload size declared by the chunk header.
+        /// Payload size declared by the chunk header, in bytes.
         chunk_size: u32,
         /// Interval of the length token.
         evidence: DxbcEvidence,
@@ -231,7 +234,7 @@ impl Display for DxbcLayoutError {
             Self::ShaderLengthMismatch { chunk_index, declared, chunk_size, evidence } => {
                 write!(
                     f,
-                    "DXBC shader chunk {chunk_index} length token {declared} at {} does not match its {chunk_size}-byte payload",
+                    "DXBC shader chunk {chunk_index} length token {declared} DWORDs at {} does not match its {chunk_size}-byte payload",
                     evidence.location()
                 )
             }
