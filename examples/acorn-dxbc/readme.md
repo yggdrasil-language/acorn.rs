@@ -10,8 +10,9 @@
   classified; any other FourCC is kept verbatim, skipped by its declared length and still records the interval it
   occupies.
 - **`SHEX` instruction layout**: a shader chunk starts with a version token and a length token in 32-bit DWORDs,
-  followed by a stream of `word_count << 16 | opcode` words. The length token covers the whole chunk payload, so a valid
-  chunk satisfies `length_token * 4 == chunk_size` while the chunk header itself declares bytes.
+  followed by SM5 instruction words. Each opcode token keeps its length in bits[30:24] and its opcode in bits[10:0], and
+  the length counts DWORDs including the token itself. The length token covers the whole chunk payload, so a valid chunk
+  satisfies `length_token * 4 == chunk_size` while the chunk header itself declares bytes.
   `ShexProgram::instructions` walks that stream one instruction at a time and reports the raw `opcode`, the declared
   `word_count`, the instruction's word offset and its byte range inside the container.
 - **Structural validation**: `validate_dxbc` and `DxbcContainer::validate` return a `DxbcSummary` for a structurally

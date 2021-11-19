@@ -2,7 +2,8 @@
 
 use acorn_core::{Budget, BudgetError, BudgetTracker, ByteRange};
 use acorn_dxbc::{
-    DXBC_MAGIC, DxbcByteError, DxbcChunkKind, DxbcContainer, DxbcLayoutError, ShexProgram, validate_dxbc, validate_dxbc_bytes,
+    DXBC_MAGIC, DxbcByteError, DxbcChunkKind, DxbcContainer, DxbcInstruction, DxbcLayoutError, ShexProgram, validate_dxbc,
+    validate_dxbc_bytes,
 };
 use acorn_source::MemorySource;
 
@@ -11,6 +12,11 @@ const CONTAINER_VERSION: u32 = 1;
 const SHEX_VERSION_TOKEN: u32 = 0x0000_0040;
 const OPCODE_DECLARE: u16 = 0x0001;
 const OPCODE_RETURN: u16 = 0x003E;
+
+/// Builds an SM5 opcode token: length in bits[30:24], opcode in bits[10:0].
+fn instruction_token(opcode: u16, word_count: u32) -> u32 {
+    (word_count << 24) | u32::from(opcode)
+}
 
 struct ChunkSpec {
     four_cc: [u8; 4],
@@ -40,9 +46,36 @@ fn shex_payload(version_token: u32, length_token: u32, words: &[u32]) -> Vec<u8>
 ///
 /// The payload is 20 bytes, so the DWORD-counting length token is 5.
 fn minimal_shader_payload() -> Vec<u8> {
-    let words = [(2 << 16) | u32::from(OPCODE_DECLARE), 0x0000_0001, (1 << 16) | u32::from(OPCODE_RETURN)];
+    let words = [instruction_token(OPCODE_DECLARE, 2), 0x0000_0001, instruction_token(OPCODE_RETURN, 1)];
     shex_payload(SHEX_VERSION_TOKEN, 5, &words)
 }
+
+/// Raw `SHEX` payload emitted by the shader emitter for its `dispatch_fill` program.
+///
+/// The emitted container was accepted by a real D3D12 device for both PSO
+/// creation and dispatch, so these bytes are a known-good SM5 stream: 52 DWORDs
+/// of payload, a version token of `0x00050051`, and a first instruction token of
+/// `0x0100086a` (`dcl_globalFlags`, length 1).
+const EMITTED_FILL_SHEX: [u8; 208] = [
+    0x51, 0x00, 0x05, 0x00, 0x34, 0x00, 0x00, 0x00, 0x6a, 0x08, 0x00, 0x01, //
+    0x59, 0x00, 0x00, 0x07, 0x46, 0x8e, 0x30, 0x00, 0x00, 0x00, 0x00, 0x00, //
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, //
+    0x00, 0x00, 0x00, 0x00, 0x9d, 0x00, 0x00, 0x06, 0x46, 0xee, 0x31, 0x00, //
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, //
+    0x00, 0x00, 0x00, 0x00, 0x5f, 0x00, 0x00, 0x02, 0x12, 0x00, 0x02, 0x00, //
+    0x68, 0x00, 0x00, 0x02, 0x01, 0x00, 0x00, 0x00, 0x9b, 0x00, 0x00, 0x04, //
+    0x40, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, //
+    0x50, 0x00, 0x00, 0x08, 0x12, 0x00, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, //
+    0x0a, 0x00, 0x02, 0x00, 0x0a, 0x80, 0x30, 0x00, 0x00, 0x00, 0x00, 0x00, //
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1f, 0x00, 0x04, 0x03, //
+    0x0a, 0x00, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3e, 0x00, 0x00, 0x01, //
+    0x15, 0x00, 0x00, 0x01, 0x29, 0x00, 0x00, 0x06, 0x12, 0x00, 0x10, 0x00, //
+    0x00, 0x00, 0x00, 0x00, 0x0a, 0x00, 0x02, 0x00, 0x01, 0x40, 0x00, 0x00, //
+    0x02, 0x00, 0x00, 0x00, 0xa6, 0x00, 0x00, 0x08, 0x12, 0xe0, 0x21, 0x00, //
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0a, 0x00, 0x10, 0x00, //
+    0x00, 0x00, 0x00, 0x00, 0x01, 0x40, 0x00, 0x00, 0x00, 0x00, 0x80, 0x3f, //
+    0x3e, 0x00, 0x00, 0x01,
+];
 
 fn minimal_chunks() -> Vec<ChunkSpec> {
     vec![
@@ -308,9 +341,58 @@ fn shader_chunk_without_room_for_its_tokens_is_rejected() {
 }
 
 #[test]
+fn emitted_fill_shader_decodes_with_the_dword_length_field() {
+    let mut chunks = minimal_chunks();
+    chunks[3] = chunk(*b"SHEX", EMITTED_FILL_SHEX.to_vec());
+    let bytes = build_container(CONTAINER_VERSION, &chunks);
+
+    let summary = validate_dxbc_bytes(&bytes).expect("an emitted fill shader is structurally valid");
+    assert_eq!(summary.header.total_length, 324);
+    assert_eq!(summary.chunks[3].size, 208);
+
+    let shader = summary.shaders[0];
+    assert_eq!(shader.version_token, 0x0005_0051);
+    assert_eq!(shader.length_token, 52);
+    assert_eq!(shader.instruction_count, 13);
+    assert_eq!(shader.instruction_words, 50);
+}
+
+#[test]
+fn emitted_fill_instruction_ranges_cover_the_whole_stream() {
+    let mut chunks = minimal_chunks();
+    chunks[3] = chunk(*b"SHEX", EMITTED_FILL_SHEX.to_vec());
+    let source = memory_source(build_container(CONTAINER_VERSION, &chunks));
+    let mut ledger = BudgetTracker::new(Budget::default());
+
+    let container = DxbcContainer::open(&source, &mut ledger).expect("open container");
+    let chunks = container.chunks(&mut ledger).expect("read chunk headers");
+    let program = ShexProgram::open(&source, &mut ledger, &chunks[3]).expect("open shader chunk");
+    let instructions = program.instructions(&mut ledger).map(|item| item.expect("instruction layout")).collect::<Vec<_>>();
+
+    assert_eq!(instructions.len(), 13);
+    assert_eq!(
+        instructions[0],
+        DxbcInstruction { opcode: 0x006A, word_count: 1, word_offset: 0, byte_range: ByteRange { start: 112, len: 4 } }
+    );
+    assert_eq!(instructions[1].opcode, 0x0059);
+    assert_eq!(instructions[1].word_count, 7);
+    assert_eq!(instructions[1].word_offset, 1);
+    assert_eq!(instructions[1].byte_range, ByteRange { start: 116, len: 28 });
+
+    let last = instructions[12];
+    assert_eq!(last.opcode, 0x003E);
+    assert_eq!(last.word_count, 1);
+    assert_eq!(last.word_offset, 49);
+    assert_eq!(last.byte_range, ByteRange { start: 308, len: 4 });
+
+    let decoded_words: u64 = instructions.iter().map(|instruction| u64::from(instruction.word_count)).sum();
+    assert_eq!(decoded_words, 50, "the walk must consume exactly the DWORDs after the token pair");
+}
+
+#[test]
 fn shader_length_token_is_counted_in_dwords() {
     // A 52-DWORD shader in a 208-byte chunk: the ratio a real `fxc` product uses.
-    let words = vec![(1 << 16) | u32::from(OPCODE_RETURN); 50];
+    let words = vec![instruction_token(OPCODE_RETURN, 1); 50];
     let mut chunks = minimal_chunks();
     chunks[3] = chunk(*b"SHEX", shex_payload(SHEX_VERSION_TOKEN, 52, &words));
     let bytes = build_container(CONTAINER_VERSION, &chunks);
@@ -326,7 +408,7 @@ fn shader_length_token_is_counted_in_dwords() {
 fn shader_length_token_must_match_the_chunk_size() {
     // The payload is 20 bytes, so a token of 4 DWORDs claims only 16 bytes.
     let mut chunks = minimal_chunks();
-    let words = [(2 << 16) | u32::from(OPCODE_DECLARE), 0x0000_0001, (1 << 16) | u32::from(OPCODE_RETURN)];
+    let words = [instruction_token(OPCODE_DECLARE, 2), 0x0000_0001, instruction_token(OPCODE_RETURN, 1)];
     chunks[3] = chunk(*b"SHEX", shex_payload(SHEX_VERSION_TOKEN, 4, &words));
     let bytes = build_container(CONTAINER_VERSION, &chunks);
 
@@ -346,7 +428,7 @@ fn shader_length_token_must_match_the_chunk_size() {
 #[test]
 fn shader_length_mismatch_message_names_both_units() {
     let mut chunks = minimal_chunks();
-    let words = [(2 << 16) | u32::from(OPCODE_DECLARE), 0x0000_0001, (1 << 16) | u32::from(OPCODE_RETURN)];
+    let words = [instruction_token(OPCODE_DECLARE, 2), 0x0000_0001, instruction_token(OPCODE_RETURN, 1)];
     chunks[3] = chunk(*b"SHEX", shex_payload(SHEX_VERSION_TOKEN, 4, &words));
     let bytes = build_container(CONTAINER_VERSION, &chunks);
 
@@ -358,7 +440,7 @@ fn shader_length_mismatch_message_names_both_units() {
 #[test]
 fn zero_word_count_instruction_is_rejected() {
     let mut chunks = minimal_chunks();
-    chunks[3] = chunk(*b"SHEX", shex_payload(SHEX_VERSION_TOKEN, 5, &[u32::from(OPCODE_DECLARE), 0, 0]));
+    chunks[3] = chunk(*b"SHEX", shex_payload(SHEX_VERSION_TOKEN, 5, &[instruction_token(OPCODE_DECLARE, 0), 0, 0]));
     let bytes = build_container(CONTAINER_VERSION, &chunks);
 
     let error = validate_dxbc_bytes(&bytes).expect_err("a zero word count must fail");
@@ -374,7 +456,7 @@ fn zero_word_count_instruction_is_rejected() {
 #[test]
 fn instruction_past_the_stream_end_is_rejected() {
     let mut chunks = minimal_chunks();
-    let words = [(9 << 16) | u32::from(OPCODE_DECLARE), 0, 0];
+    let words = [instruction_token(OPCODE_DECLARE, 9), 0, 0];
     chunks[3] = chunk(*b"SHEX", shex_payload(SHEX_VERSION_TOKEN, 5, &words));
     let bytes = build_container(CONTAINER_VERSION, &chunks);
 
@@ -393,7 +475,7 @@ fn instruction_past_the_stream_end_is_rejected() {
 #[test]
 fn trailing_bytes_that_do_not_complete_a_word_are_rejected() {
     let mut chunks = minimal_chunks();
-    let words = [(2 << 16) | u32::from(OPCODE_DECLARE), 0, (1 << 16) | u32::from(OPCODE_RETURN)];
+    let words = [instruction_token(OPCODE_DECLARE, 2), 0, instruction_token(OPCODE_RETURN, 1)];
     // A 21-byte payload cannot be described by any DWORD count, so the alignment
     // check fires before the length token is compared.
     let mut payload = shex_payload(SHEX_VERSION_TOKEN, 5, &words);
