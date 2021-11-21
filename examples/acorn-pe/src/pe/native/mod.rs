@@ -129,7 +129,10 @@ pub fn build_native_import_table(order: &[(String, String)]) -> Result<NativeImp
 }
 
 fn normalize_dll_name(dll: &str) -> String {
-    if dll.to_ascii_lowercase().ends_with(".dll") { dll.to_ascii_lowercase() } else { format!("{}.dll", dll.to_ascii_lowercase()) }
+    let lower = dll.to_ascii_lowercase();
+    // 导入模块名必须保持原样：`node.exe` 这类由主可执行文件导出的符号不能补
+    // `.dll`，否则装载器会去找一个不存在的 `node.exe.dll`。
+    if lower.ends_with(".dll") || lower.ends_with(".exe") { lower } else { format!("{lower}.dll") }
 }
 
 fn align2(bytes: &mut Vec<u8>) {
@@ -145,6 +148,42 @@ pub struct NativeExport {
     pub name: String,
     /// 符号在 `.text` 内的偏移。
     pub offset: u32,
+}
+
+/// `.data` 内绝对指针的目标节与偏移。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NativeDataTarget {
+    /// `.text` 内偏移（函数地址等）。
+    Text(u32),
+    /// `.data` 内偏移（字符串、方法表等）。
+    Data(u32),
+}
+
+/// `.data` 内的绝对指针重定位（写入 `IMAGE_REL_BASED_DIR64` 基址重定位）。
+///
+/// `PE` 没有 `RELATIVE` 动态重定位概念：指针按首选基址写成绝对 `VA`，装载器
+/// 在镜像被搬到其它基址时按 `.reloc` 修正。目标按「节 + 节内偏移」声明，
+/// 由写出器换算成 `IMAGE_BASE_X64 + RVA`。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NativeDataRelocation {
+    /// 8 字节指针字段在 `.data` 内的偏移。
+    pub offset: u32,
+    /// 指针指向的镜像内目标。
+    pub target: NativeDataTarget,
+}
+
+/// `.data` 节与它的重定位/文本引用。
+///
+/// 数据节只在需要可写初始化数据的产物（例如宿主扩展模块的方法表）出现；
+/// 可执行文件与无数据的 DLL 传空节即可。
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct NativeDataSection {
+    /// `.data` 节字节（文件内初始化）。
+    pub data: Vec<u8>,
+    /// `.data` 内的绝对指针重定位（装载器按 `.reloc` 修正）。
+    pub relocations: Vec<NativeDataRelocation>,
+    /// `.text` 内指向 `.data` 的 `rel32` 修复项：`(字段偏移, `.data` 内偏移)`。
+    pub text_fixups: Vec<(u32, u32)>,
 }
 
 /// 待写入的原生 `PE` 镜像。
@@ -176,16 +215,30 @@ pub struct NativePeWriter;
 impl NativePeWriter {
     /// 将原生镜像写入 `PE32+` 控制台可执行文件。
     pub fn write_executable(image: &NativePeImage) -> Result<Vec<u8>, NativePeWriteError> {
+        Self::write_executable_with_data(image, &NativeDataSection::default())
+    }
+
+    /// 将原生镜像写入 `PE32+`，并附加可写 `.data` 节与基址重定位。
+    ///
+    /// `.data` 内的绝对指针按首选基址写成 `VA`，同时生成 `.reloc`
+    /// （`IMAGE_REL_BASED_DIR64`）并在可选头声明 `DYNAMIC_BASE`；`.text` 内
+    /// 对数据段的自相对引用由 `text_fixups` 回填。
+    pub fn write_executable_with_data(
+        image: &NativePeImage,
+        data_section: &NativeDataSection,
+    ) -> Result<Vec<u8>, NativePeWriteError> {
         if image.text.is_empty() {
             return Err(NativePeWriteError::EmptyText);
         }
 
         let text_len = u32::try_from(image.text.len()).map_err(|_| NativePeWriteError::SizeOverflow("`.text`"))?;
         let rdata_len = u32::try_from(image.rdata.len()).map_err(|_| NativePeWriteError::SizeOverflow("`.rdata`"))?;
+        let data_len = u32::try_from(data_section.data.len()).map_err(|_| NativePeWriteError::SizeOverflow("`.data`"))?;
         let idata_len = u32::try_from(image.idata.len()).map_err(|_| NativePeWriteError::SizeOverflow("`.idata`"))?;
         let mut edata = build_export_directory(&image.exports);
         let edata_len = u32::try_from(edata.len()).map_err(|_| NativePeWriteError::SizeOverflow("`.edata`"))?;
-        let layout = NativeSectionLayout::compute_with_exports(text_len, rdata_len, idata_len, edata_len);
+        let reloc_len = base_reloc_len(&data_section.relocations);
+        let layout = NativeSectionLayout::compute_with_sections(text_len, rdata_len, data_len, idata_len, edata_len, reloc_len);
 
         let mut idata = image.idata.clone();
         let import_directory_size = if image.imports.is_empty() {
@@ -204,6 +257,34 @@ impl NativePeWriter {
         }
         let export_directory_rva = layout.edata.map(|section| section.rva).unwrap_or(0);
 
+        // `.data`：先按目标 RVA 写成绝对 VA，再由 `.reloc` 声明这些槽需要基址修正。
+        let mut data = data_section.data.clone();
+        let mut base_relocations = Vec::new();
+        if let Some(data_placement) = layout.data {
+            for relocation in &data_section.relocations {
+                let field = relocation.offset as usize;
+                if field + 8 > data.len() {
+                    return Err(NativePeWriteError::SizeOverflow("数据重定位（字段越界）"));
+                }
+                let target_rva = match relocation.target {
+                    NativeDataTarget::Text(offset) => {
+                        if offset as usize >= image.text.len() {
+                            return Err(NativePeWriteError::SizeOverflow("数据重定位（`.text` 目标越界）"));
+                        }
+                        layout.text.rva + offset
+                    }
+                    NativeDataTarget::Data(offset) => {
+                        if offset as usize >= data_section.data.len() {
+                            return Err(NativePeWriteError::SizeOverflow("数据重定位（`.data` 目标越界）"));
+                        }
+                        data_placement.rva + offset
+                    }
+                };
+                data[field..field + 8].copy_from_slice(&(IMAGE_BASE_X64 + u64::from(target_rva)).to_le_bytes());
+            }
+            base_relocations = build_base_relocations(&data_section.relocations, data_placement.rva);
+        }
+
         let mut text = image.text.clone();
         if !image.text_rel32_fixups.is_empty() {
             let Some(idata_section) = layout.idata
@@ -215,15 +296,36 @@ impl NativePeWriter {
                 if field + 4 > text.len() {
                     return Err(NativePeWriteError::SizeOverflow("导入修复项（字段越界）"));
                 }
-                let displacement = (idata_section.rva as i64 + i64::from(*target))
-                    - (layout.text.rva as i64 + field as i64 + 4);
-                let displacement = i32::try_from(displacement)
-                    .map_err(|_| NativePeWriteError::SizeOverflow("导入修复项（rel32 越界）"))?;
+                let displacement =
+                    (idata_section.rva as i64 + i64::from(*target)) - (layout.text.rva as i64 + field as i64 + 4);
+                let displacement =
+                    i32::try_from(displacement).map_err(|_| NativePeWriteError::SizeOverflow("导入修复项（rel32 越界）"))?;
+                text[field..field + 4].copy_from_slice(&displacement.to_le_bytes());
+            }
+        }
+        if !data_section.text_fixups.is_empty() {
+            let Some(data_placement) = layout.data
+            else {
+                return Err(NativePeWriteError::SizeOverflow("数据引用（缺少 `.data`）"));
+            };
+            for (field, target) in &data_section.text_fixups {
+                let field = *field as usize;
+                if field + 4 > text.len() {
+                    return Err(NativePeWriteError::SizeOverflow("数据引用（字段越界）"));
+                }
+                if *target as usize >= data_section.data.len() {
+                    return Err(NativePeWriteError::SizeOverflow("数据引用（目标越界）"));
+                }
+                let displacement =
+                    (data_placement.rva as i64 + i64::from(*target)) - (layout.text.rva as i64 + field as i64 + 4);
+                let displacement =
+                    i32::try_from(displacement).map_err(|_| NativePeWriteError::SizeOverflow("数据引用（rel32 越界）"))?;
                 text[field..field + 4].copy_from_slice(&displacement.to_le_bytes());
             }
         }
 
         let entry_rva = if image.is_dll { 0 } else { layout.text.rva + image.entry_point };
+        let reloc_directory = layout.reloc.map(|section| (section.rva, base_relocations.len() as u32)).unwrap_or((0, 0));
         let mut writer = PeBinaryWriter::new();
         write_dos_header(&mut writer);
         writer.write_u32(0x0000_4550);
@@ -240,16 +342,23 @@ impl NativePeWriter {
             export_directory_size,
             import_directory_rva,
             import_directory_size,
+            reloc_directory,
         );
         write_section(&mut writer, b".text\0\0\0", &layout.text, 0x6000_0020);
         if let Some(rdata) = layout.rdata {
             write_section(&mut writer, b".rdata\0\0", &rdata, 0x4000_0040);
+        }
+        if let Some(data_section) = layout.data {
+            write_section(&mut writer, b".data\0\0\0", &data_section, 0xC000_0040);
         }
         if let Some(idata_section) = layout.idata {
             write_section(&mut writer, b".idata\0\0", &idata_section, 0xC000_0040);
         }
         if let Some(edata_section) = layout.edata {
             write_section(&mut writer, b".edata\0\0", &edata_section, 0x4000_0040);
+        }
+        if let Some(reloc_section) = layout.reloc {
+            write_section(&mut writer, b".reloc\0\0", &reloc_section, 0x4200_0040);
         }
 
         pad_to(&mut writer, layout.size_of_headers as usize);
@@ -259,6 +368,10 @@ impl NativePeWriter {
             writer.write_bytes(&image.rdata);
             pad_to(&mut writer, (rdata.raw_ptr + rdata.raw_size) as usize);
         }
+        if let Some(data_section) = layout.data {
+            writer.write_bytes(&data);
+            pad_to(&mut writer, (data_section.raw_ptr + data_section.raw_size) as usize);
+        }
         if let Some(idata_section) = layout.idata {
             writer.write_bytes(&idata);
             pad_to(&mut writer, (idata_section.raw_ptr + idata_section.raw_size) as usize);
@@ -267,9 +380,48 @@ impl NativePeWriter {
             writer.write_bytes(&edata);
             pad_to(&mut writer, (edata_section.raw_ptr + edata_section.raw_size) as usize);
         }
+        if let Some(reloc_section) = layout.reloc {
+            writer.write_bytes(&base_relocations);
+            pad_to(&mut writer, (reloc_section.raw_ptr + reloc_section.raw_size) as usize);
+        }
 
         Ok(writer.into_bytes())
     }
+}
+
+/// `.reloc` 节长度：按 `IMAGE_REL_BASED_DIR64` 分层块计算（块内 `u16` 条目偶数补齐）。
+fn base_reloc_len(relocations: &[NativeDataRelocation]) -> u32 {
+    if relocations.is_empty() {
+        return 0;
+    }
+    let mut pages = std::collections::BTreeMap::<u32, usize>::new();
+    for relocation in relocations {
+        *pages.entry(relocation.offset >> 12).or_insert(0) += 1;
+    }
+    pages.values().map(|count| 8 + 2 * (count + (count & 1))).sum::<usize>() as u32
+}
+
+/// 构造 `.reloc` 节：每 4KB 一个块，条目高 4 位是 `IMAGE_REL_BASED_DIR64`(10)。
+fn build_base_relocations(relocations: &[NativeDataRelocation], data_rva: u32) -> Vec<u8> {
+    let mut pages = std::collections::BTreeMap::<u32, Vec<u32>>::new();
+    for relocation in relocations {
+        pages.entry(relocation.offset >> 12).or_default().push(relocation.offset & 0xFFF);
+    }
+    let mut out = Vec::new();
+    for (page, mut offsets) in pages {
+        offsets.sort_unstable();
+        let entry_count = offsets.len() + (offsets.len() & 1);
+        out.extend_from_slice(&(data_rva + page * 0x1000).to_le_bytes());
+        out.extend_from_slice(&(8u32 + 2 * entry_count as u32).to_le_bytes());
+        for offset in &offsets {
+            out.extend_from_slice(&((10u16 << 12) | *offset as u16).to_le_bytes());
+        }
+        if entry_count > offsets.len() {
+            // 块大小必须是 4 的倍数：奇数条目用一个 `IMAGE_REL_BASED_ABSOLUTE` 补齐。
+            out.extend_from_slice(&0u16.to_le_bytes());
+        }
+    }
+    out
 }
 
 /// 构造 `.edata` 导出目录（段内 RVA 仍是相对偏移，由写入器加 `edata_rva`）。
@@ -402,6 +554,7 @@ fn write_optional_header(
     export_size: u32,
     import_rva: u32,
     import_size: u32,
+    reloc: (u32, u32),
 ) {
     writer.write_u16(0x020B);
     writer.write_u8(14);
@@ -425,21 +578,32 @@ fn write_optional_header(
     writer.write_u32(size_of_headers);
     writer.write_u32(0);
     writer.write_u16(3);
-    // NX_COMPAT only (no DYNAMIC_BASE — 无 .reloc)
-    writer.write_u16(0x0100);
+    // NX_COMPAT；有 `.reloc` 时同时声明 DYNAMIC_BASE（镜像可被搬到任意基址）。
+    let dll_characteristics = if reloc.1 > 0 { 0x0140 } else { 0x0100 };
+    writer.write_u16(dll_characteristics);
     writer.write_u64(0x100000);
     writer.write_u64(0x1000);
     writer.write_u64(0x100000);
     writer.write_u64(0x1000);
     writer.write_u32(0);
     writer.write_u32(16);
-    // Export
+    // Export（目录 0）
     writer.write_u32(export_rva);
     writer.write_u32(export_size);
-    // Import
+    // Import（目录 1）
     writer.write_u32(import_rva);
     writer.write_u32(import_size);
-    for _ in 0..14 {
+    // 目录 2/3/4：资源、异常、证书，均为空。
+    for _ in 0..3 {
+        writer.write_u32(0);
+        writer.write_u32(0);
+    }
+    // Base reloc（目录 5）
+    writer.write_u32(reloc.0);
+    writer.write_u32(reloc.1);
+    // 目录 6..15：调试、架构、全局指针、TLS、加载配置、绑定导入、IAT、
+    // 延迟导入、CLR 运行时、保留。
+    for _ in 0..10 {
         writer.write_u32(0);
         writer.write_u32(0);
     }

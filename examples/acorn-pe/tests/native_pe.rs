@@ -1,4 +1,112 @@
-use acorn_pe::pe::{NativeExport, NativePeImage, NativePeWriter};
+use acorn_pe::pe::{
+    IMAGE_BASE_X64, NativeDataRelocation, NativeDataSection, NativeDataTarget, NativeExport, NativePeImage, NativePeWriter,
+};
+
+/// 读 PE32+ 的节表并返回 `(名称, rva, raw_ptr)`。
+fn pe_sections(bytes: &[u8]) -> Vec<(String, u32, u32)> {
+    let pe_offset = u32::from_le_bytes(bytes[0x3C..0x40].try_into().unwrap()) as usize;
+    let section_count = u16::from_le_bytes(bytes[pe_offset + 6..pe_offset + 8].try_into().unwrap()) as usize;
+    let optional_size = u16::from_le_bytes(bytes[pe_offset + 20..pe_offset + 22].try_into().unwrap()) as usize;
+    let table = pe_offset + 24 + optional_size;
+    (0..section_count)
+        .map(|index| {
+            let base = table + index * 40;
+            let name_end = bytes[base..base + 8].iter().position(|byte| *byte == 0).unwrap_or(8);
+            let name = String::from_utf8_lossy(&bytes[base..base + name_end]).into_owned();
+            let rva = u32::from_le_bytes(bytes[base + 12..base + 16].try_into().unwrap());
+            let raw_ptr = u32::from_le_bytes(bytes[base + 20..base + 24].try_into().unwrap());
+            (name, rva, raw_ptr)
+        })
+        .collect()
+}
+
+/// 可写数据段 + 基址重定位：`.data` 里的绝对指针按首选基址写成 VA，`.reloc`
+/// 逐槽声明 `IMAGE_REL_BASED_DIR64`，可选头声明 `DYNAMIC_BASE`。
+#[test]
+fn writes_writable_data_with_base_relocations() {
+    // `mov rax, [rip+disp32]; ret`：读取 `.data` 第 0 个槽里的指针。
+    let text = vec![0x48, 0x8B, 0x05, 0, 0, 0, 0, 0xC3];
+    let image = NativePeImage {
+        text,
+        rdata: Vec::new(),
+        idata: Vec::new(),
+        imports: Vec::new(),
+        exports: vec![NativeExport { name: "main".to_string(), offset: 0 }],
+        text_rel32_fixups: Vec::new(),
+        is_dll: true,
+        entry_point: 0,
+    };
+    let data = NativeDataSection {
+        data: vec![0u8; 8],
+        relocations: vec![NativeDataRelocation { offset: 0, target: NativeDataTarget::Text(0) }],
+        text_fixups: vec![(3, 0)],
+    };
+    let bytes = NativePeWriter::write_executable_with_data(&image, &data).expect("write pe with data");
+
+    let sections = pe_sections(&bytes);
+    let text_rva = sections.iter().find(|(name, _, _)| name == ".text").expect(".text").1;
+    let (_, _, data_raw) = *sections.iter().find(|(name, _, _)| name == ".data").expect(".data");
+    assert!(sections.iter().any(|(name, _, _)| name == ".reloc"), "基址重定位节必须存在");
+
+    let pointer = u64::from_le_bytes(bytes[data_raw as usize..data_raw as usize + 8].try_into().unwrap());
+    assert_eq!(pointer, IMAGE_BASE_X64 + u64::from(text_rva), "数据槽必须按首选基址写成绝对 VA");
+
+    let pe_offset = u32::from_le_bytes(bytes[0x3C..0x40].try_into().unwrap()) as usize;
+    let optional = pe_offset + 24;
+    let dll_characteristics = u16::from_le_bytes(bytes[optional + 70..optional + 72].try_into().unwrap());
+    assert_eq!(dll_characteristics & 0x0040, 0x0040, "有 `.reloc` 时必须声明 DYNAMIC_BASE");
+    let reloc_rva = u32::from_le_bytes(bytes[optional + 112 + 40..optional + 112 + 44].try_into().unwrap());
+    let reloc_size = u32::from_le_bytes(bytes[optional + 112 + 44..optional + 112 + 48].try_into().unwrap());
+    assert!(reloc_rva != 0 && reloc_size >= 10, "基址重定位目录不能为空");
+}
+
+/// 真实装载：装载器按 `.reloc` 把数据槽修正到实际基址，导出函数返回的指针
+/// 指向本模块 `.text` 起点。
+#[test]
+#[cfg(windows)]
+fn applies_base_relocations_when_loaded() {
+    unsafe extern "system" {
+        fn LoadLibraryA(name: *const u8) -> *mut core::ffi::c_void;
+        fn GetProcAddress(module: *mut core::ffi::c_void, name: *const u8) -> *mut core::ffi::c_void;
+        fn FreeLibrary(module: *mut core::ffi::c_void) -> i32;
+    }
+
+    let text = vec![0x48, 0x8B, 0x05, 0, 0, 0, 0, 0xC3];
+    let image = NativePeImage {
+        text,
+        rdata: Vec::new(),
+        idata: Vec::new(),
+        imports: Vec::new(),
+        exports: vec![NativeExport { name: "main".to_string(), offset: 0 }],
+        text_rel32_fixups: Vec::new(),
+        is_dll: true,
+        entry_point: 0,
+    };
+    let data = NativeDataSection {
+        data: vec![0u8; 8],
+        relocations: vec![NativeDataRelocation { offset: 0, target: NativeDataTarget::Text(0) }],
+        text_fixups: vec![(3, 0)],
+    };
+    let bytes = NativePeWriter::write_executable_with_data(&image, &data).expect("write pe with data");
+    let text_rva = pe_sections(&bytes).iter().find(|(name, _, _)| name == ".text").expect(".text").1;
+
+    let path = std::env::temp_dir().join(format!("nyar-data-reloc-{}.dll", std::process::id()));
+    std::fs::write(&path, &bytes).expect("write dll");
+    let mut name = path.to_string_lossy().into_owned().into_bytes();
+    name.push(0);
+
+    unsafe {
+        let module = LoadLibraryA(name.as_ptr());
+        assert!(!module.is_null(), "DLL with `.data` must load");
+        let symbol = GetProcAddress(module, b"main\0".as_ptr());
+        assert!(!symbol.is_null(), "export missing");
+        let main: extern "system" fn() -> usize = std::mem::transmute(symbol);
+        let expected = module as usize + text_rva as usize;
+        assert_eq!(main(), expected, "数据槽必须指向实际装载基址下的 `.text`");
+        FreeLibrary(module);
+    }
+    let _ = std::fs::remove_file(&path);
+}
 
 #[test]
 fn writes_amd64_console_executable() {
@@ -9,7 +117,7 @@ fn writes_amd64_console_executable() {
         imports: Vec::new(),
         exports: Vec::new(),
         text_rel32_fixups: Vec::new(),
-            is_dll: false,
+        is_dll: false,
         entry_point: 0,
     };
     let bytes = NativePeWriter::write_executable(&image).expect("write pe");
@@ -39,7 +147,7 @@ fn writes_dll_with_export_directory() {
         imports: Vec::new(),
         exports: vec![NativeExport { name: "main".to_string(), offset: 0 }],
         text_rel32_fixups: Vec::new(),
-            is_dll: true,
+        is_dll: true,
         entry_point: 0,
     };
     let bytes = NativePeWriter::write_executable(&image).expect("write dll");
@@ -73,7 +181,7 @@ fn loads_exported_function_from_dll_image() {
         imports: Vec::new(),
         exports: vec![NativeExport { name: "main".to_string(), offset: 0 }],
         text_rel32_fixups: Vec::new(),
-            is_dll: true,
+        is_dll: true,
         entry_point: 0,
     };
     let bytes = NativePeWriter::write_executable(&image).expect("write dll");
@@ -119,7 +227,8 @@ fn resolves_imported_function_through_iat() {
     let provider_bytes = NativePeWriter::write_executable(&provider).expect("write provider");
 
     // consumer：`call [rip+disp32]`（FF 15 disp32）+ `ret`，汇入导入表的 IAT 槽。
-    let table = build_native_import_table(&[("nyar_import_provider".to_string(), "nyar_probe".to_string())]).expect("import table");
+    let table =
+        build_native_import_table(&[("nyar_import_provider".to_string(), "nyar_probe".to_string())]).expect("import table");
     let slot = *table.slot_offsets.get(&("nyar_import_provider".to_string(), "nyar_probe".to_string())).expect("slot");
     let consumer = NativePeImage {
         text: vec![0xFF, 0x15, 0, 0, 0, 0, 0xC3],
@@ -172,7 +281,7 @@ fn runs_stub_executable() {
         imports: Vec::new(),
         exports: Vec::new(),
         text_rel32_fixups: Vec::new(),
-            is_dll: false,
+        is_dll: false,
         entry_point: 0,
     };
     let bytes = NativePeWriter::write_executable(&image).expect("write pe");
