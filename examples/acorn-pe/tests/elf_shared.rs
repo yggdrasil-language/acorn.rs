@@ -1,6 +1,6 @@
 use acorn_pe::elf::{
-    SharedElfDataReference, SharedElfDataRelocation, SharedElfDataTarget, SharedElfImage, SharedElfImportCall, SharedElfWriter,
-    SharedObjectExport, parse_elf64,
+    SharedElfDataReference, SharedElfDataRelocation, SharedElfDataTarget, SharedElfImage, SharedElfImportCall, SharedElfSpec,
+    SharedElfWriter, SharedObjectExport, parse_elf64,
 };
 
 fn image(text: Vec<u8>) -> SharedElfImage {
@@ -111,7 +111,8 @@ fn write_imports(
     imports: &[String],
     calls: &[SharedElfImportCall],
 ) -> Vec<u8> {
-    SharedElfWriter::write_x86_64_with_imports(image, exports, imports, calls, &[], &[]).expect("write")
+    SharedElfWriter::write_x86_64_shared(&SharedElfSpec { image, exports, imports, calls, ..Default::default() })
+        .expect("write")
 }
 
 #[test]
@@ -162,6 +163,126 @@ fn multiple_call_sites_share_one_import_slot() {
     let second_slot = text_off as i64 + 12 + 4 + second;
     assert_eq!(first_slot, second_slot, "同一导入的调用点必须共享 GOT 槽");
     assert_eq!(String::from_utf8_lossy(&bytes).matches("acorn_probe").count(), 1, "符号只应声明一次");
+}
+
+/// 读取 `.dynamic` 的 tag 序列（`PT_DYNAMIC` 的 `p_offset` 与 `p_vaddr` 恒等）。
+fn dynamic_tags(bytes: &[u8]) -> Vec<u64> {
+    let phnum = u16::from_le_bytes(bytes[56..58].try_into().unwrap()) as usize;
+    let mut dynamic_offset = None;
+    for index in 0..phnum {
+        let base = 64 + index * 56;
+        let p_type = u32::from_le_bytes(bytes[base..base + 4].try_into().unwrap());
+        if p_type == 2 {
+            dynamic_offset = Some(u64::from_le_bytes(bytes[base + 8..base + 16].try_into().unwrap()) as usize);
+        }
+    }
+    let mut cursor = dynamic_offset.expect("PT_DYNAMIC");
+    let mut tags = Vec::new();
+    loop {
+        let tag = u64::from_le_bytes(bytes[cursor..cursor + 8].try_into().unwrap());
+        if tag == 0 {
+            tags.push(0);
+            break;
+        }
+        tags.push(tag);
+        cursor += 16;
+    }
+    tags
+}
+
+/// `DT_NEEDED` / `DT_SONAME`：依赖与自身标识都进入 `.dynamic` 与 `.dynstr`。
+#[test]
+fn writes_needed_dependencies_and_soname() {
+    let (image, exports) = x86_64_exports();
+    let needed = vec!["libpython3.12.so.1.0".to_string()];
+    let bytes = SharedElfWriter::write_x86_64_shared(&SharedElfSpec {
+        image: &image,
+        exports: &exports,
+        needed: &needed,
+        soname: Some("demo.so"),
+        ..Default::default()
+    })
+    .expect("write with dependencies");
+    let tags = dynamic_tags(&bytes);
+    assert_eq!(tags.iter().filter(|tag| **tag == 1).count(), 1, "必须恰好一条 `DT_NEEDED`");
+    assert!(tags.contains(&14), "必须写入 `DT_SONAME`");
+    let haystack = String::from_utf8_lossy(&bytes);
+    assert!(haystack.contains("libpython3.12.so.1.0"), "依赖名必须进入 `.dynstr`");
+    assert!(haystack.contains("demo.so"), "`SONAME` 必须进入 `.dynstr`");
+}
+
+/// 真实装载：`DT_NEEDED` 缺库时必须失败（绑定真实生效，而不是被忽略）。
+#[cfg(target_os = "linux")]
+#[test]
+fn linux_dlopen_fails_for_a_missing_needed_library() {
+    use std::ffi::CString;
+
+    unsafe extern "C" {
+        fn dlopen(filename: *const i8, flag: i32) -> *mut core::ffi::c_void;
+        fn dlclose(handle: *mut core::ffi::c_void) -> i32;
+        fn dlerror() -> *const i8;
+    }
+
+    let (image, exports) = x86_64_exports();
+    let needed = vec!["libnyar_missing_dependency.so.1".to_string()];
+    let bytes = SharedElfWriter::write_x86_64_shared(&SharedElfSpec {
+        image: &image,
+        exports: &exports,
+        needed: &needed,
+        ..Default::default()
+    })
+    .expect("write with missing dependency");
+    let path = std::env::temp_dir().join(format!("libacorn_missing_needed_{}.so", std::process::id()));
+    std::fs::write(&path, &bytes).expect("write .so");
+    let path_c = CString::new(path.to_string_lossy().as_bytes()).expect("utf8 path");
+
+    unsafe {
+        let handle = dlopen(path_c.as_ptr(), 2);
+        assert!(handle.is_null(), "缺依赖时必须装载失败");
+        let error = std::ffi::CStr::from_ptr(dlerror()).to_string_lossy().into_owned();
+        assert!(error.contains("libnyar_missing_dependency"), "错误必须指名缺失依赖: {error}");
+        if !handle.is_null() {
+            dlclose(handle);
+        }
+    }
+    let _ = std::fs::remove_file(&path);
+}
+
+/// 真实装载：可满足的依赖（`libc.so.6`）不影响加载。
+#[cfg(target_os = "linux")]
+#[test]
+fn linux_dlopen_resolves_a_present_needed_library() {
+    use std::ffi::CString;
+
+    unsafe extern "C" {
+        fn dlopen(filename: *const i8, flag: i32) -> *mut core::ffi::c_void;
+        fn dlsym(handle: *mut core::ffi::c_void, symbol: *const i8) -> *mut core::ffi::c_void;
+        fn dlclose(handle: *mut core::ffi::c_void) -> i32;
+    }
+
+    let (image, exports) = x86_64_exports();
+    let needed = vec!["libc.so.6".to_string()];
+    let bytes = SharedElfWriter::write_x86_64_shared(&SharedElfSpec {
+        image: &image,
+        exports: &exports,
+        needed: &needed,
+        ..Default::default()
+    })
+    .expect("write with libc dependency");
+    let path = std::env::temp_dir().join(format!("libacorn_needed_libc_{}.so", std::process::id()));
+    std::fs::write(&path, &bytes).expect("write .so");
+    let path_c = CString::new(path.to_string_lossy().as_bytes()).expect("utf8 path");
+
+    unsafe {
+        let handle = dlopen(path_c.as_ptr(), 2);
+        assert!(!handle.is_null(), "可满足的依赖必须能装载");
+        let answer = dlsym(handle, c"answer".as_ptr());
+        assert!(!answer.is_null(), "导出必须可解析");
+        let answer: extern "C" fn() -> i32 = std::mem::transmute(answer);
+        assert_eq!(answer(), 42);
+        dlclose(handle);
+    }
+    let _ = std::fs::remove_file(&path);
 }
 
 /// 真实装载：provider 先以 RTLD_GLOBAL 载入，consumer 的未定义符号经 GOT 解析。
@@ -238,8 +359,14 @@ fn image_with_pointer_data()
 #[test]
 fn writes_relative_relocations_for_data() {
     let (image, exports, relocations, references) = image_with_pointer_data();
-    let bytes =
-        SharedElfWriter::write_x86_64_with_imports(&image, &exports, &[], &[], &relocations, &references).expect("write");
+    let bytes = SharedElfWriter::write_x86_64_shared(&SharedElfSpec {
+        image: &image,
+        exports: &exports,
+        data_relocations: &relocations,
+        data_references: &references,
+        ..Default::default()
+    })
+    .expect("write");
     let header = parse_elf64(&bytes).expect("parse");
     assert_eq!(header.file_type, 3);
     // 没有任何导入时仍必须输出 `DT_RELA`（数据自相对指针）。
@@ -277,8 +404,14 @@ fn linux_dlopen_applies_relative_relocations() {
     }
 
     let (image, exports, relocations, references) = image_with_pointer_data();
-    let bytes =
-        SharedElfWriter::write_x86_64_with_imports(&image, &exports, &[], &[], &relocations, &references).expect("write");
+    let bytes = SharedElfWriter::write_x86_64_shared(&SharedElfSpec {
+        image: &image,
+        exports: &exports,
+        data_relocations: &relocations,
+        data_references: &references,
+        ..Default::default()
+    })
+    .expect("write");
     let path = std::env::temp_dir().join(format!("libacorn_relative_{}.so", std::process::id()));
     std::fs::write(&path, &bytes).expect("write .so");
     let path_name = CString::new(path.to_string_lossy().as_bytes()).expect("utf8 path");

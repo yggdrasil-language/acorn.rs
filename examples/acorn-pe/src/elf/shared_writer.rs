@@ -79,6 +79,7 @@ const PF_W: u32 = 2;
 const PF_X: u32 = 1;
 
 const DT_NULL: u64 = 0;
+const DT_NEEDED: u64 = 1;
 const DT_HASH: u64 = 4;
 const DT_STRTAB: u64 = 5;
 const DT_SYMTAB: u64 = 6;
@@ -87,6 +88,7 @@ const DT_RELASZ: u64 = 8;
 const DT_RELAENT: u64 = 9;
 const DT_STRSZ: u64 = 10;
 const DT_SYMENT: u64 = 11;
+const DT_SONAME: u64 = 14;
 
 /// `R_X86_64_GLOB_DAT`：把解析后的地址写入 GOT 槽（非惰性绑定）。
 const R_X86_64_GLOB_DAT: u32 = 6;
@@ -165,13 +167,56 @@ pub struct SharedElfImage {
     pub bss: Vec<u8>,
 }
 
+/// 带宿主导入、数据重定位与依赖声明的 `ET_DYN` 规格。
+///
+/// `needed` 写成 `DT_NEEDED`（按 `SONAME` 装载依赖），`soname` 写成 `DT_SONAME`；
+/// 二者共同构成显式模块绑定，替代「依赖碰巧在全局符号作用域」。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SharedElfSpec<'a> {
+    /// 节内容。
+    pub image: &'a SharedElfImage,
+    /// 动态导出符号。
+    pub exports: &'a [SharedObjectExport],
+    /// 未定义动态符号表（GOT 槽按序号生成）。
+    pub imports: &'a [String],
+    /// `call [rip+disp32]` 调用点。
+    pub calls: &'a [SharedElfImportCall],
+    /// `.data` 内自相对指针。
+    pub data_relocations: &'a [SharedElfDataRelocation],
+    /// `.text → .data` 自相对引用。
+    pub data_references: &'a [SharedElfDataReference],
+    /// `DT_NEEDED` 依赖的 `SONAME` 列表。
+    pub needed: &'a [String],
+    /// 本对象的 `DT_SONAME`（可选）。
+    pub soname: Option<&'a str>,
+}
+
+/// 规格的空白底稿：除 `image`/`exports` 外全部为空。
+static EMPTY_SPEC_IMAGE: SharedElfImage =
+    SharedElfImage { text: Vec::new(), rodata: Vec::new(), data: Vec::new(), bss: Vec::new() };
+
+impl Default for SharedElfSpec<'_> {
+    fn default() -> Self {
+        Self {
+            image: &EMPTY_SPEC_IMAGE,
+            exports: &[],
+            imports: &[],
+            calls: &[],
+            data_relocations: &[],
+            data_references: &[],
+            needed: &[],
+            soname: None,
+        }
+    }
+}
+
 /// `ET_DYN` 共享库写入器。
 pub struct SharedElfWriter;
 
 impl SharedElfWriter {
     /// 写出最小可加载 AArch64 `ET_DYN` `.so`（含 `.dynsym` 导出表）。
     pub fn write_aarch64(image: &SharedElfImage, exports: &[SharedObjectExport]) -> Result<Vec<u8>, SharedElfWriteError> {
-        Self::write(image, exports, &[], &[], &[], &[], EM_AARCH64)
+        Self::write(image, exports, &[], &[], &[], &[], &[], None, EM_AARCH64)
     }
 
     /// 写出最小可加载 x86-64 `ET_DYN` `.so`（含 `.dynsym` 导出表）。
@@ -180,27 +225,26 @@ impl SharedElfWriter {
     /// `st_value` 即 `.text` 内偏移。调用方只提供位置无关机器码（RIP 相对取址与
     /// 同镜像 `rel32` 调用），不需要动态重定位；宿主 `dlopen` + `dlsym` 直接取址。
     pub fn write_x86_64(image: &SharedElfImage, exports: &[SharedObjectExport]) -> Result<Vec<u8>, SharedElfWriteError> {
-        Self::write(image, exports, &[], &[], &[], &[], EM_X86_64)
+        Self::write(image, exports, &[], &[], &[], &[], &[], None, EM_X86_64)
     }
 
-    /// 写出带宿主导入与数据重定位的 x86-64 `ET_DYN` `.so`。
+    /// 写出带宿主导入、数据重定位与依赖声明的 x86-64 `ET_DYN` `.so`。
     ///
-    /// - `imports`：未定义动态符号表，按序号各生成一个可写 GOT 槽与
-    ///   `R_X86_64_GLOB_DAT` 重定位；
-    /// - `calls`：`call [rip+disp32]` 调用点，按 `import` 序号指向对应 GOT 槽
-    ///   （同一导入可有任意多个调用点）；
-    /// - `data_relocations`：`.data` 内 `R_X86_64_RELATIVE` 自相对指针；
-    /// - `data_references`：`.text` 内指向 `.data` 的 `rel32` 引用。
-    #[allow(clippy::too_many_arguments)]
-    pub fn write_x86_64_with_imports(
-        image: &SharedElfImage,
-        exports: &[SharedObjectExport],
-        imports: &[String],
-        calls: &[SharedElfImportCall],
-        data_relocations: &[SharedElfDataRelocation],
-        data_references: &[SharedElfDataReference],
-    ) -> Result<Vec<u8>, SharedElfWriteError> {
-        Self::write(image, exports, imports, calls, data_relocations, data_references, EM_X86_64)
+    /// 语义见 [`SharedElfSpec`]：`imports`/`calls` 描述 GOT 间接导入，
+    /// `data_relocations`/`data_references` 描述数据段自相对指针，`needed`/`soname`
+    /// 描述动态依赖与自身标识。
+    pub fn write_x86_64_shared(spec: &SharedElfSpec<'_>) -> Result<Vec<u8>, SharedElfWriteError> {
+        Self::write(
+            spec.image,
+            spec.exports,
+            spec.imports,
+            spec.calls,
+            spec.data_relocations,
+            spec.data_references,
+            spec.needed,
+            spec.soname,
+            EM_X86_64,
+        )
     }
 
     /// 按机器类型写出 `ET_DYN`；AArch64 与 x86-64 共享同一动态表布局。
@@ -212,6 +256,8 @@ impl SharedElfWriter {
         calls: &[SharedElfImportCall],
         data_relocations: &[SharedElfDataRelocation],
         data_references: &[SharedElfDataReference],
+        needed: &[String],
+        soname: Option<&str>,
         machine: u16,
     ) -> Result<Vec<u8>, SharedElfWriteError> {
         if image.text.is_empty() {
@@ -254,6 +300,18 @@ impl SharedElfWriter {
         let dynsym_len = (sym_count * 24) as u32;
 
         let mut dynstr = vec![0u8];
+        let mut needed_name_offsets = Vec::with_capacity(needed.len());
+        for library in needed {
+            needed_name_offsets.push(dynstr.len() as u32);
+            dynstr.extend_from_slice(library.as_bytes());
+            dynstr.push(0);
+        }
+        let soname_offset = soname.map(|name| {
+            let offset = dynstr.len() as u32;
+            dynstr.extend_from_slice(name.as_bytes());
+            dynstr.push(0);
+            offset
+        });
         let mut export_name_offsets = Vec::with_capacity(exports.len());
         for export in exports {
             export_name_offsets.push(dynstr.len() as u32);
@@ -271,7 +329,8 @@ impl SharedElfWriter {
 
         let rela_len = relocation_count * 24;
         let rela_off = if relocation_count == 0 { 0 } else { align_up(dynstr_off + dynstr_len, 8) };
-        let dynamic_count = if relocation_count == 0 { 6 } else { 9 };
+        // HASH/SYMTAB/STRTAB/STRSZ/SYMENT/NULL + 每个 NEEDED + 可选 SONAME + 可选 RELA 三元组。
+        let dynamic_count = 6 + needed.len() as u32 + u32::from(soname.is_some()) + if relocation_count == 0 { 0 } else { 3 };
         let dynamic_len = dynamic_count * 16;
         let dynamic_off = align_up(if rela_off > 0 { rela_off + rela_len } else { dynstr_off + dynstr_len }, 8);
         let load_filesz = dynamic_off + dynamic_len;
@@ -397,6 +456,8 @@ impl SharedElfWriter {
             load_vaddr + u64::from(dynstr_off),
             u64::from(dynstr_len),
             if rela_off > 0 { Some((load_vaddr + u64::from(rela_off), u64::from(rela_len))) } else { None },
+            &needed_name_offsets,
+            soname_offset,
         );
 
         if rw_len > 0 {
@@ -528,12 +589,21 @@ fn write_dynamic(
     strtab_vaddr: u64,
     strsz: u64,
     rela: Option<(u64, u64)>,
+    needed_name_offsets: &[u32],
+    soname_offset: Option<u32>,
 ) {
     write_dyn(out, DT_HASH, hash_vaddr);
     write_dyn(out, DT_SYMTAB, symtab_vaddr);
     write_dyn(out, DT_STRTAB, strtab_vaddr);
     write_dyn(out, DT_STRSZ, strsz);
     write_dyn(out, DT_SYMENT, 24);
+    // `DT_NEEDED` 的值是 `.dynstr` 内偏移；装载器据此按 `SONAME` 绑定依赖。
+    for offset in needed_name_offsets {
+        write_dyn(out, DT_NEEDED, u64::from(*offset));
+    }
+    if let Some(offset) = soname_offset {
+        write_dyn(out, DT_SONAME, u64::from(offset));
+    }
     if let Some((rela_vaddr, rela_size)) = rela {
         write_dyn(out, DT_RELA, rela_vaddr);
         write_dyn(out, DT_RELASZ, rela_size);
