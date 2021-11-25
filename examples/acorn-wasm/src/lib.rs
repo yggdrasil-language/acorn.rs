@@ -18,6 +18,8 @@ pub mod opcode;
 pub mod reader;
 /// `WASM` 段级解码层。
 pub mod section;
+/// `WASM` 文本格式（WAT / WIT）的文档模型与写出。
+pub mod text;
 
 /// 解码函数体指令序列。
 pub use decode::decode_code_body;
