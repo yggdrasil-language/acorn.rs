@@ -163,7 +163,9 @@ fn format_operand(operand: &MsilInstructionOperand) -> String {
 
 fn format_method_ref(method: &MsilMethodRef) -> String {
     match &method.owner {
-        Some(owner) => format!("{} {}::{}{}", method.signature.return_type, owner, method.name, method.signature.parameter_list_text()),
+        Some(owner) => {
+            format!("{} {}::{}{}", method.signature.return_type, owner, method.name, method.signature.parameter_list_text())
+        }
         None => format!("{} {}{}", method.signature.return_type, method.name, method.signature.parameter_list_text()),
     }
 }

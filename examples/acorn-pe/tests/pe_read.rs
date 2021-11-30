@@ -9,7 +9,7 @@ fn parses_native_pe_writer_output() {
         imports: Vec::new(),
         exports: Vec::new(),
         text_rel32_fixups: Vec::new(),
-            is_dll: false,
+        is_dll: false,
         entry_point: 0,
     };
     let bytes = NativePeWriter::write_executable(&image).expect("write pe");
