@@ -1,0 +1,23 @@
+[package]
+name = "acorn-core"
+version.workspace = true
+authors.workspace = true
+description = "Address spaces, spans, layout contracts, and parse budgets for Acorn."
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository = "https://github.com/oovm/acorn.rs/tree/dev/projects/acorn-core"
+categories = ["parsing"]
+keywords = ["binary", "parser", "layout"]
+
+[dependencies]
+acorn-diagnostic = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true, optional = true }
+
+[features]
+default = []
+serde = ["dep:serde", "acorn-diagnostic/serde"]
+
+[package.metadata.docs.rs]
+all-features = true
