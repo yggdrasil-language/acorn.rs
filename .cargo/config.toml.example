@@ -1,9 +1,8 @@
-# Local path overlay for workspace crates.
-# Committed `Cargo.toml` uses git `branch = "dev"` so CI and fresh clones resolve from remote.
-# Copy to `.cargo/config.toml` (gitignored) when developing sibling crates locally.
-
-[patch."https://github.com/yggdrasil-language/acorn.rs.git"]
-acorn-diagnostic = { path = "projects/acorn-diagnostic" }
-acorn-core = { path = "projects/acorn-core" }
-acorn-source = { path = "projects/acorn-source" }
-acorn-probe = { path = "projects/acorn-probe" }
+# Optional git patch overlay for downstream repos that depend on Acorn via git `branch = "dev"`.
+# The `acorn.rs` workspace itself uses `path` workspace dependencies.
+#
+# [patch."https://github.com/yggdrasil-language/acorn.rs.git"]
+# acorn-diagnostic = { path = "../acorn.rs/projects/acorn-diagnostic" }
+# acorn-core = { path = "../acorn.rs/projects/acorn-core" }
+# acorn-source = { path = "../acorn.rs/projects/acorn-source" }
+# acorn-probe = { path = "../acorn.rs/projects/acorn-probe" }
