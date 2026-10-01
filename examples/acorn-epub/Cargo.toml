@@ -13,7 +13,7 @@ publish = false
 acorn-core = { workspace = true }
 acorn-source = { workspace = true }
 acorn-zip = { workspace = true }
-quick-xml = "0.37.5"
+oak-xml = { workspace = true, default-features = false, features = ["serde"] }
 thiserror = { workspace = true }
 
 [dev-dependencies]

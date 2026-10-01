@@ -4,6 +4,7 @@
 mod container;
 mod opf;
 mod package;
+mod xml;
 
 pub use container::ContainerRootFile;
 pub use opf::{ManifestItem, OpfDocument, OpfMetadata, SpineItem};
