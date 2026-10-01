@@ -3,6 +3,7 @@ use acorn_core::ByteRange;
 use crate::zip64::{needs_zip64_eocd, resolve_zip64_eocd};
 
 const EOCD_SIGNATURE: u32 = 0x0605_4b50;
+const CD_SIGNATURE: u32 = 0x0201_4b50;
 const EOCD_MIN_SIZE: usize = 22;
 const MAX_COMMENT: usize = 65_535;
 
@@ -74,6 +75,16 @@ fn parse_eocd(bytes: &[u8], offset: usize) -> Option<EndOfCentralDirectory> {
             )
         };
 
+    if !eocd_points_at_central_directory(
+        bytes,
+        offset,
+        entry_count,
+        central_directory_offset,
+        central_directory_size,
+    ) {
+        return None;
+    }
+
     Some(EndOfCentralDirectory {
         offset: offset as u64,
         entry_count,
@@ -82,6 +93,26 @@ fn parse_eocd(bytes: &[u8], offset: usize) -> Option<EndOfCentralDirectory> {
         comment_length: comment_length as u16,
         zip64,
     })
+}
+
+fn eocd_points_at_central_directory(
+    bytes: &[u8],
+    eocd_offset: usize,
+    entry_count: u64,
+    central_directory_offset: u64,
+    central_directory_size: u64,
+) -> bool {
+    if entry_count == 0 {
+        return central_directory_size == 0;
+    }
+    let start = central_directory_offset as usize;
+    let end = start
+        .checked_add(central_directory_size as usize)
+        .unwrap_or(bytes.len() + 1);
+    if end > bytes.len() || end > eocd_offset {
+        return false;
+    }
+    read_u32_le(bytes, start) == Some(CD_SIGNATURE)
 }
 
 /// Byte range covering the central directory.

@@ -9,7 +9,7 @@ mod view;
 mod zip64;
 
 pub use decode::{decode_member, read_member_payload};
-pub use eocd::EndOfCentralDirectory;
+pub use eocd::{find_eocd, EndOfCentralDirectory};
 pub use entry::ZipMember;
 pub use index::{index_zip, index_zip_bytes, ZipArchiveIndex, ZipIndexError};
 pub use view::{
