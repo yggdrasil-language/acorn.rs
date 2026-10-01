@@ -1,0 +1,18 @@
+[package]
+name = "acorn-docx"
+version.workspace = true
+authors.workspace = true
+description = "DOCX OPC package indexer built on Acorn ZIP."
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository = "https://github.com/yggdrasil-language/acorn.rs/tree/dev/examples/acorn-docx"
+publish = false
+
+[dependencies]
+acorn-core = { workspace = true }
+acorn-source = { workspace = true }
+acorn-zip = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]

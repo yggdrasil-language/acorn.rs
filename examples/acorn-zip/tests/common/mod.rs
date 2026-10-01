@@ -13,9 +13,9 @@ pub fn minimal_single_file_zip() -> Vec<u8> {
     let mut cd_fixed = [0u8; 46];
     cd_fixed[0..2].copy_from_slice(&[0x14, 0x00]);
     cd_fixed[2..4].copy_from_slice(&[0x14, 0x00]);
-    cd_fixed[8..12].copy_from_slice(&[0x83, 0x16, 0xdc, 0x8c]);
-    cd_fixed[12..16].copy_from_slice(&[0x01, 0x00, 0x00, 0x00]);
+    cd_fixed[12..16].copy_from_slice(&[0x83, 0x16, 0xdc, 0x8c]);
     cd_fixed[16..20].copy_from_slice(&[0x01, 0x00, 0x00, 0x00]);
+    cd_fixed[20..24].copy_from_slice(&[0x01, 0x00, 0x00, 0x00]);
     cd_fixed[24..26].copy_from_slice(&[0x01, 0x00]);
     cd_fixed[38..42].copy_from_slice(&[0x00, 0x00, 0x00, 0x00]);
     archive.extend_from_slice(&cd_fixed);
