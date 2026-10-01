@@ -16,6 +16,9 @@ pub enum OpcError {
     /// Part path was not found in the package.
     #[error("opc part not found: {0}")]
     PartNotFound(String),
+    /// OPC XML could not be parsed.
+    #[error("opc parse error: {0}")]
+    Parse(String),
 }
 
 /// Open Packaging Conventions package backed by a ZIP archive.

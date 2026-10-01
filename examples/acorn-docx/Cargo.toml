@@ -13,6 +13,8 @@ publish = false
 acorn-core = { workspace = true }
 acorn-source = { workspace = true }
 acorn-zip = { workspace = true }
+oak-xml = { workspace = true, default-features = false, features = ["serde"] }
 thiserror = { workspace = true }
 
 [dev-dependencies]
+flate2 = { workspace = true }
