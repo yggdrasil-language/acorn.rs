@@ -1,0 +1,22 @@
+[package]
+name = "acorn-source"
+version.workspace = true
+authors.workspace = true
+description = "ByteSource, windows, and in-memory sources for Acorn."
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository = "https://github.com/oovm/acorn.rs/tree/dev/projects/acorn-source"
+categories = ["parsing"]
+keywords = ["binary", "parser", "source"]
+
+[dependencies]
+acorn-diagnostic = { workspace = true }
+thiserror = { workspace = true }
+
+[features]
+default = ["std"]
+std = []
+
+[package.metadata.docs.rs]
+all-features = true
