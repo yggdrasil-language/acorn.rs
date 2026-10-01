@@ -6,6 +6,7 @@
 
 mod address;
 mod budget;
+pub mod diagnostic;
 mod layout;
 mod partial;
 mod reference;

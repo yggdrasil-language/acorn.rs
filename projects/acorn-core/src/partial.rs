@@ -1,4 +1,4 @@
-use acorn_diagnostic::BudgetUsage;
+use crate::diagnostic::BudgetUsage;
 
 use crate::address::{AddressSpaceId, ByteRange};
 

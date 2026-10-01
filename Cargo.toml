@@ -3,7 +3,6 @@ resolver = "2"
 members = ["projects/*", "examples/*"]
 default-members = [
     "projects/acorn-core",
-    "projects/acorn-diagnostic",
     "projects/acorn-source",
     "projects/acorn-probe",
     "examples/acorn-zip",
@@ -29,7 +28,6 @@ serde = { version = "1.0.228", features = ["derive"] }
 flate2 = { version = "1.1.5", default-features = false, features = ["rust_backend"] }
 diagnostic = { git = "https://github.com/oovm/diagnostic-rs", branch = "dev", package = "diagnostic", default-features = false, features = ["std", "serde"] }
 
-acorn-diagnostic = { path = "projects/acorn-diagnostic" }
 acorn-core = { path = "projects/acorn-core" }
 acorn-source = { path = "projects/acorn-source" }
 acorn-probe = { path = "projects/acorn-probe" }

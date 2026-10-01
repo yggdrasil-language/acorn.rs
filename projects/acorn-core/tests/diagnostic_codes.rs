@@ -1,5 +1,6 @@
-use acorn_diagnostic::{
+use acorn_core::diagnostic::{
     actions, error, warning, BudgetUsage, DiagnosticCode, DiagnosticSeverity, DiagnosticSet,
+    MessageArg,
 };
 
 #[test]
@@ -18,7 +19,7 @@ fn diagnostic_codes_use_dotted_wire_identifiers() {
 #[test]
 fn builders_emit_unified_diagnostic_records() {
     let diagnostic = error(DiagnosticCode::Truncated, "input ended early")
-        .with_action(actions::provide_ranges().with_arg("expected", acorn_diagnostic::MessageArg::U64(64)));
+        .with_action(actions::provide_ranges().with_arg("expected", MessageArg::U64(64)));
 
     assert_eq!(diagnostic.code().as_str(), "acorn.layout.truncated");
     assert_eq!(diagnostic.severity(), DiagnosticSeverity::Error);

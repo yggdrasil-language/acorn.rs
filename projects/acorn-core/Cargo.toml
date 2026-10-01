@@ -11,13 +11,13 @@ categories = ["parsing"]
 keywords = ["binary", "parser", "layout"]
 
 [dependencies]
-acorn-diagnostic = { workspace = true }
+diagnostic = { workspace = true, default-features = false, features = ["std", "serde"] }
 thiserror = { workspace = true }
 serde = { workspace = true, optional = true }
 
 [features]
 default = []
-serde = ["dep:serde", "acorn-diagnostic/serde"]
+serde = ["dep:serde", "diagnostic/serde"]
 
 [package.metadata.docs.rs]
 all-features = true

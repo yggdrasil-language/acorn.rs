@@ -2,7 +2,6 @@
 # The `acorn.rs` workspace itself uses `path` workspace dependencies.
 #
 # [patch."https://github.com/yggdrasil-language/acorn.rs.git"]
-# acorn-diagnostic = { path = "../acorn.rs/projects/acorn-diagnostic" }
 # acorn-core = { path = "../acorn.rs/projects/acorn-core" }
 # acorn-source = { path = "../acorn.rs/projects/acorn-source" }
 # acorn-probe = { path = "../acorn.rs/projects/acorn-probe" }
