@@ -5,10 +5,11 @@ default-members = [
     "projects/acorn-core",
     "projects/acorn-diagnostic",
     "projects/acorn-source",
-    "projects/syntax-error",
+    "projects/acorn-probe",
 ]
 exclude = [
     "projects/.DS_Store",
+    "projects/syntax-error",
 ]
 
 [workspace.package]
@@ -16,16 +17,18 @@ version = "0.0.1"
 authors = ["Yggdrasill Team <192607617@qq.com>"]
 edition = "2021"
 license = "MPL-2.0"
-homepage = "https://github.com/oovm/acorn.rs"
-repository = "https://github.com/oovm/acorn.rs"
+homepage = "https://github.com/yggdrasil-language/acorn.rs"
+repository = "https://github.com/yggdrasil-language/acorn.rs"
 
 [workspace.dependencies]
 thiserror = "2.0.18"
 serde = { version = "1.0.228", features = ["derive"] }
 
-acorn-diagnostic = { path = "projects/acorn-diagnostic", version = "0.0.1" }
-acorn-core = { path = "projects/acorn-core", version = "0.0.1" }
-acorn-source = { path = "projects/acorn-source", version = "0.0.1" }
+# Git `branch = "dev"` for CI and published consumers. Local path overlay: `.cargo/config.toml`.
+acorn-diagnostic = { git = "https://github.com/yggdrasil-language/acorn.rs.git", branch = "dev", package = "acorn-diagnostic" }
+acorn-core = { git = "https://github.com/yggdrasil-language/acorn.rs.git", branch = "dev", package = "acorn-core" }
+acorn-source = { git = "https://github.com/yggdrasil-language/acorn.rs.git", branch = "dev", package = "acorn-source" }
+acorn-probe = { git = "https://github.com/yggdrasil-language/acorn.rs.git", branch = "dev", package = "acorn-probe" }
 
 [profile.release]
 lto = true
