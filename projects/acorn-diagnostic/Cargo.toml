@@ -1,0 +1,21 @@
+[package]
+name = "acorn-diagnostic"
+version.workspace = true
+authors.workspace = true
+description = "Structured diagnostics and severity for the Acorn binary parser."
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository = "https://github.com/oovm/acorn.rs/tree/dev/projects/acorn-diagnostic"
+categories = ["parsing"]
+keywords = ["binary", "diagnostic", "parser"]
+
+[dependencies]
+serde = { workspace = true, optional = true }
+
+[features]
+default = []
+serde = ["dep:serde"]
+
+[package.metadata.docs.rs]
+all-features = true
