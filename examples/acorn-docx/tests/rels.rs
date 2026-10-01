@@ -1,5 +1,5 @@
 use acorn_core::ParseBudget;
-use acorn_docx::{parse_relationship_targets, OpcPackage};
+use acorn_docx::{parse_relationship_targets, resolve_opc_target, OpcPackage};
 
 fn stored_zip(entries: &[(&str, &[u8])]) -> Vec<u8> {
     let mut archive = Vec::new();
@@ -64,11 +64,45 @@ fn crc32(data: &[u8]) -> u32 {
     crc ^ 0xFFFF_FFFF
 }
 
+const ROOT_RELS: &[u8] = br#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+</Relationships>"#;
+
 const DOCUMENT_RELS: &[u8] = br#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="https://example.com" TargetMode="External"/>
   <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/image1.png"/>
 </Relationships>"#;
+
+#[test]
+fn resolves_opc_targets_relative_to_source_part() {
+    assert_eq!(
+        resolve_opc_target("word/document.xml", "media/image1.png"),
+        "word/media/image1.png"
+    );
+    assert_eq!(
+        resolve_opc_target("", "word/document.xml"),
+        "word/document.xml"
+    );
+    assert_eq!(
+        resolve_opc_target("word/document.xml", "/custom.xml"),
+        "custom.xml"
+    );
+}
+
+#[test]
+fn resolves_main_document_part_from_root_relationships() {
+    let zip = stored_zip(&[
+        ("_rels/.rels", ROOT_RELS),
+        ("word/document.xml", b"<w:document/>"),
+    ]);
+    let pkg = OpcPackage::open("docx.zip", zip).expect("open");
+    let path = pkg
+        .main_document_part_path(&ParseBudget::default())
+        .expect("main");
+    assert_eq!(path.as_deref(), Some("word/document.xml"));
+}
 
 #[test]
 fn parses_relationship_targets_from_xml() {
