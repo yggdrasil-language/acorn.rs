@@ -1,0 +1,19 @@
+[package]
+name = "acorn-epub"
+version.workspace = true
+authors.workspace = true
+description = "EPUB OCF package and OPF manifest access for Acorn"
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository = "https://github.com/yggdrasil-language/acorn.rs/tree/dev/examples/acorn-epub"
+publish = false
+
+[dependencies]
+acorn-core = { workspace = true }
+acorn-source = { workspace = true }
+acorn-zip = { workspace = true }
+quick-xml = "0.37.5"
+thiserror = { workspace = true }
+
+[dev-dependencies]

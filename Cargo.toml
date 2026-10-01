@@ -8,6 +8,7 @@ default-members = [
     "projects/acorn-probe",
     "examples/acorn-zip",
     "examples/acorn-docx",
+    "examples/acorn-epub",
 ]
 exclude = [
     "projects/.DS_Store",
@@ -34,6 +35,7 @@ acorn-source = { path = "projects/acorn-source" }
 acorn-probe = { path = "projects/acorn-probe" }
 acorn-zip = { path = "examples/acorn-zip" }
 acorn-docx = { path = "examples/acorn-docx" }
+acorn-epub = { path = "examples/acorn-epub" }
 
 [profile.release]
 lto = true
