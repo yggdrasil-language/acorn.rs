@@ -1,0 +1,21 @@
+[package]
+name = "acorn-cfb"
+version.workspace = true
+authors.workspace = true
+description = "Compound File Binary Format reader for Acorn."
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository = "https://github.com/yggdrasil-language/acorn.rs/tree/dev/examples/acorn-cfb"
+publish = false
+
+[dependencies]
+acorn-core = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+cfb = "0.7.3"
+
+[[test]]
+name = "oracle"
+required-features = []
