@@ -1,0 +1,12 @@
+[package]
+name = "acorn-jvm"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "JVM class and JAR binary format encoding (Acorn domain)"
+repository = "https://github.com/yggdrasil-language/acorn.rs"
+
+[dependencies]
+serde = { workspace = true }
+zip = { workspace = true }
