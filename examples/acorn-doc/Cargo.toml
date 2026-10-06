@@ -1,0 +1,21 @@
+[package]
+name = "acorn-doc"
+version.workspace = true
+authors.workspace = true
+description = "Legacy Word .doc binary semantics for Acorn."
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository = "https://github.com/yggdrasil-language/acorn.rs/tree/dev/examples/acorn-doc"
+publish = false
+
+[dependencies]
+acorn-cfb = { workspace = true }
+acorn-core = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+cfb = "0.7.3"
+
+[[test]]
+name = "legacy_doc"
