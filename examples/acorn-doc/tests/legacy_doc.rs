@@ -1,9 +1,10 @@
 use std::io::{Cursor, Write};
+use std::path::Path;
 
 use acorn_doc::{extract_text_from_bytes, open_legacy_doc};
 use cfb::CompoundFile as OracleCompoundFile;
 
-fn minimal_legacy_doc_bytes(text: &str) -> Vec<u8> {
+pub(crate) fn minimal_legacy_doc_bytes(text: &str) -> Vec<u8> {
     let mut word_document = vec![0u8; 32];
     word_document[0..2].copy_from_slice(&[0xec, 0xa5]);
     let text_bytes = text.as_bytes();
@@ -44,4 +45,26 @@ fn extracts_simple_legacy_doc_text() {
 fn rejects_non_compound_input() {
     let error = open_legacy_doc(b"plain text").expect_err("expected error");
     assert!(matches!(error, acorn_doc::DocError::NotCompoundFile));
+}
+
+#[test]
+fn checked_in_fixture_extracts_expected_text() {
+    let fixture_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/legacy_plain.doc");
+    let fixture = std::fs::read(&fixture_path).expect("read checked-in legacy_plain.doc fixture");
+    let extracted = extract_text_from_bytes(&fixture).expect("extract fixture");
+    assert!(extracted.text.contains("Hello legacy DOC"));
+    assert!(extracted.text.contains("Second paragraph"));
+    assert!(!extracted.complex);
+    assert!(!extracted.piece_table_used);
+}
+
+#[test]
+#[ignore = "run manually to refresh tests/fixtures/legacy_plain.doc"]
+fn write_legacy_plain_fixture() {
+    let fixture_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/legacy_plain.doc");
+    if let Some(parent) = fixture_path.parent() {
+        std::fs::create_dir_all(parent).expect("create fixtures dir");
+    }
+    let bytes = minimal_legacy_doc_bytes("Hello legacy DOC\rSecond paragraph");
+    std::fs::write(&fixture_path, bytes).expect("write fixture");
 }
