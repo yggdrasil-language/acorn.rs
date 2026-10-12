@@ -11,8 +11,10 @@ use crate::zip64::{needs_zip64_size, parse_zip64_extra};
 const CD_SIGNATURE: u32 = 0x0201_4b50;
 const LOCAL_SIGNATURE: u32 = 0x0403_4b50;
 const CD_SIGNATURE_LEN: usize = 4;
-const CD_FIXED: usize = 46;
-const CD_ENTRY_PREFIX: usize = CD_SIGNATURE_LEN + CD_FIXED;
+/// Fixed fields after the 4-byte signature (APPNOTE central directory = 46 total).
+const CD_FIXED_AFTER_SIG: usize = 42;
+/// Central directory fixed prefix including signature.
+const CD_ENTRY_PREFIX: usize = CD_SIGNATURE_LEN + CD_FIXED_AFTER_SIG;
 
 /// Errors while indexing a ZIP archive.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]

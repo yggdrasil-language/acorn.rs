@@ -3,7 +3,9 @@ mod common;
 
 use acorn_core::ParseBudget;
 use acorn_source::MemorySource;
-use acorn_zip::{index_zip_bytes, read_member_payload, COMPRESSION_DEFLATE};
+use acorn_zip::{
+    decode_member_with_facts, index_zip_bytes, read_member_payload, COMPRESSION_DEFLATE,
+};
 
 use common::minimal_single_file_zip;
 use flate2::write::DeflateEncoder;
@@ -32,7 +34,8 @@ fn deflate_zip(name: &[u8], payload: &[u8], compressed: &[u8]) -> Vec<u8> {
 
     let cd_offset = archive.len();
     archive.extend_from_slice(b"PK\x01\x02");
-    let mut cd_fixed = [0u8; 46];
+    // 42 bytes after signature (APPNOTE total fixed = 46).
+    let mut cd_fixed = [0u8; 42];
     cd_fixed[0..2].copy_from_slice(&[0x14, 0x00]);
     cd_fixed[2..4].copy_from_slice(&[0x14, 0x00]);
     cd_fixed[6..8].copy_from_slice(&[0x08, 0x00]);
@@ -92,4 +95,18 @@ fn stored_decode_matches_read_stored_payload() {
     let source = MemorySource::from_bytes("stored.zip", bytes);
     let decoded = read_member_payload(source, member, &ParseBudget::default()).expect("decode");
     assert_eq!(decoded, b"x");
+}
+
+#[test]
+fn decode_facts_report_crc_and_full_consumption() {
+    let bytes = minimal_deflated_zip();
+    let index = index_zip_bytes("deflate.zip", bytes.clone()).expect("index");
+    let member = &index.members[0];
+    let source = MemorySource::from_bytes("deflate.zip", bytes);
+    let (_decoded, facts) =
+        decode_member_with_facts("m", source, member, &ParseBudget::default()).expect("facts");
+    assert!(facts.fully_consumed);
+    assert_eq!(facts.crc32_expected, facts.crc32_actual);
+    assert!(facts.checksum_ok());
+    assert_eq!(facts.decoded_size, 2);
 }

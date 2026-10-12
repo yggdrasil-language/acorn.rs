@@ -8,7 +8,7 @@ mod index;
 mod view;
 mod zip64;
 
-pub use decode::{decode_member, read_member_payload};
+pub use decode::{decode_member, decode_member_with_facts, read_member_payload, MemberDecodeFacts};
 pub use eocd::{find_eocd, EndOfCentralDirectory};
 pub use entry::ZipMember;
 pub use index::{index_zip, index_zip_bytes, ZipArchiveIndex, ZipIndexError};

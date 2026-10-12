@@ -31,6 +31,17 @@ pub enum ZipViewError {
     /// Decode exceeded the parse budget.
     #[error("decode budget exceeded")]
     BudgetExceeded,
+    /// Decoded CRC32 does not match the central-directory CRC32.
+    #[error("member CRC32 mismatch")]
+    CrcMismatch {
+        /// CRC32 declared by the central directory.
+        expected: u32,
+        /// CRC32 of the decoded payload.
+        actual: u32,
+    },
+    /// Compressed input was not fully consumed by the decoder.
+    #[error("compressed input was not fully consumed")]
+    IncompleteCompressedInput,
 }
 
 /// Returns the compressed payload byte range inside the archive file space.
