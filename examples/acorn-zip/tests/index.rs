@@ -11,6 +11,9 @@ fn indexes_minimal_zip_members() {
     assert_eq!(index.members.len(), 1);
     assert_eq!(index.members[0].path, "a");
     assert_eq!(index.members[0].compressed_size, 1);
+    assert_eq!(index.members[0].crc32, 0x8cdc_1683);
+    assert_eq!(index.members[0].version_needed, 20);
+    assert_eq!(index.members[0].general_purpose_bit_flag, 0);
     assert!(index.layout.nodes().len() >= 2);
 }
 
