@@ -68,6 +68,14 @@ impl ByteRange {
         Ok(Self { start, len })
     }
 
+    /// Creates a range that may be empty (for zero-length ZIP payloads).
+    pub fn new_allowing_empty(start: u64, len: u64) -> Result<Self, RangeError> {
+        if len == 0 {
+            return Ok(Self { start, len: 0 });
+        }
+        Self::new(start, len)
+    }
+
     /// Returns the exclusive end offset, if it can be computed.
     pub fn end(self) -> Result<u64, RangeError> {
         self.start.checked_add(self.len).ok_or(RangeError::Overflow)

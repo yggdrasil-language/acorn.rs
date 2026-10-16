@@ -263,11 +263,11 @@ fn member_payload_range(
             offset: local_header_offset,
         }
     })?;
-    let payload_range = ByteRange::new(payload_start as u64, compressed_size).map_err(|_| {
-        ZipIndexError::MalformedEntry {
+    // Empty stored files and directory entries have a zero-length payload.
+    let payload_range = ByteRange::new_allowing_empty(payload_start as u64, compressed_size)
+        .map_err(|_| ZipIndexError::MalformedEntry {
             offset: local_header_offset,
-        }
-    })?;
+        })?;
     Ok((data_range, payload_range))
 }
 

@@ -26,7 +26,7 @@ repository = "https://github.com/yggdrasil-language/acorn.rs"
 thiserror = "2.0.18"
 miette = "7.6.0"
 serde = { version = "1.0.228", features = ["derive"] }
-zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
+zip = { version = "9.0.3", default-features = false, features = ["deflate"] }
 flate2 = { version = "1.1.5", default-features = false, features = ["rust_backend"] }
 diagnostic = { git = "https://github.com/oovm/rust-boost", branch = "dev", package = "diagnostic", default-features = false, features = ["std", "serde"] }
 

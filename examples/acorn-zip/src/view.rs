@@ -55,6 +55,9 @@ pub fn read_raw_payload<S: ByteSource>(
     member: &ZipMember,
 ) -> Result<Vec<u8>, ZipViewError> {
     let range = member.payload_range;
+    if range.len == 0 {
+        return Ok(Vec::new());
+    }
     let source_range = SourceRange::new(range.start, range.len)
         .map_err(|error| ZipViewError::Window(error.to_string()))?;
     let window = ByteWindow::new(source, 0, source_range)
