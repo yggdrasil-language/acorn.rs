@@ -15,7 +15,7 @@ mod state;
 mod write_plan;
 
 pub use address::{Address, AddressSpaceId, AddressSpaceKind, ByteRange, RangeError};
-pub use budget::{BudgetError, BudgetTracker, ParseBudget};
+pub use budget::{Budget, BudgetError, BudgetTracker};
 pub use layout::{LayoutGraph, LayoutNode, LayoutNodeId, ReferenceEdge, evidence_absolute};
 pub use partial::{Availability, NeedRange};
 pub use reference::{JumpError, ReferenceEvidence, ReferenceKind, VisitKey, checked_absolute_jump, checked_relative_jump};

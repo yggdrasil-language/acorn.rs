@@ -108,7 +108,7 @@ impl WasmHeapType {
             Self::NoExtern => -0x19,
             Self::Index(index) => *index,
         };
-        super::write_sleb128_i64(value, output);
+        acorn_codec::integer::Leb128::<i64>::encode(value, output);
     }
 }
 

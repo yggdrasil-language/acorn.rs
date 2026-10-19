@@ -2,8 +2,10 @@ mod layout;
 
 use std::fmt;
 
-use self::layout::{NativeSectionLayout, SectionPlacement};
-pub(crate) use super::writer::{FILE_ALIGNMENT, IMAGE_BASE_X64, PeBinaryWriter, SECTION_ALIGNMENT};
+pub use self::layout::NativeSectionLayout;
+use self::layout::SectionPlacement;
+pub use super::writer::IMAGE_BASE_X64;
+pub(crate) use super::writer::{FILE_ALIGNMENT, PeBinaryWriter, SECTION_ALIGNMENT};
 
 /// 原生 `PE` 写出错误。
 #[derive(Debug, Clone, PartialEq, Eq)]

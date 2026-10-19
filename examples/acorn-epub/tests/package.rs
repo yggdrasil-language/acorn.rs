@@ -1,4 +1,4 @@
-use acorn_core::ParseBudget;
+use acorn_core::Budget;
 use acorn_epub::OcfPackage;
 
 fn stored_zip(entries: &[(&str, &[u8])]) -> Vec<u8> {
@@ -98,7 +98,7 @@ fn minimal_epub_zip() -> Vec<u8> {
 fn opens_epub_and_reads_opf_metadata() {
     let package = OcfPackage::open("book.epub", minimal_epub_zip()).expect("open epub");
     assert_eq!(package.root_opf_path(), "OEBPS/content.opf");
-    let opf = package.read_opf(&ParseBudget::default()).expect("read opf");
+    let opf = package.read_opf(&Budget::default()).expect("read opf");
     assert_eq!(opf.metadata.title.as_deref(), Some("Sample Book"));
     assert_eq!(opf.metadata.language.as_deref(), Some("en"));
     assert_eq!(opf.spine.len(), 1);
@@ -110,6 +110,6 @@ fn resolves_manifest_href_to_member() {
     let package = OcfPackage::open("book.epub", minimal_epub_zip()).expect("open epub");
     let path = OcfPackage::resolve_href(package.root_opf_path(), "chapter.xhtml");
     assert_eq!(path, "OEBPS/chapter.xhtml");
-    let bytes = package.read_member(&path, &ParseBudget::default()).expect("read chapter");
+    let bytes = package.read_member(&path, &Budget::default()).expect("read chapter");
     assert!(bytes.windows(7).any(|window| window == b"Chapter"));
 }

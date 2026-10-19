@@ -1,0 +1,16 @@
+[package]
+name = "acorn-gzip"
+version.workspace = true
+authors.workspace = true
+description = "Gzip envelope indexing and decode for Acorn."
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository = "https://github.com/yggdrasil-language/acorn.rs/tree/dev/examples/acorn-gzip"
+publish = false
+
+[dependencies]
+acorn-codec = { workspace = true, features = ["compression"] }
+acorn-core = { workspace = true }
+acorn-probe = { workspace = true }
+acorn-source = { workspace = true }

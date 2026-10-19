@@ -1,0 +1,11 @@
+[package]
+name = "acorn-aarch64"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "AArch64 instruction encoding and Android JNI glue (Acorn domain)"
+repository = "https://github.com/yggdrasil-language/acorn.rs"
+
+[dependencies]
+acorn-pe = { workspace = true }

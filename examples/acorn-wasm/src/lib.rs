@@ -3,6 +3,7 @@
 
 use std::fmt::{Display, Formatter};
 
+use acorn_codec::integer::Leb128;
 use serde::{Deserialize, Serialize};
 
 /// `WASM` 指令解码层。
@@ -128,6 +129,13 @@ pub enum WasmBinaryError {
     InvalidUtf8Name,
 }
 
+fn map_varint_error(error: acorn_codec::CodecError) -> WasmBinaryError {
+    match error {
+        acorn_codec::CodecError::InputExhausted { .. } => WasmBinaryError::UnexpectedEof,
+        _ => WasmBinaryError::InvalidLeb128,
+    }
+}
+
 impl Display for WasmBinaryError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -243,14 +251,14 @@ impl WasmBinaryModule {
             let mut payload = Vec::new();
             if section.id == 0 {
                 let name = section.name.clone().unwrap_or_default();
-                write_uleb128(name.len() as u32, &mut payload);
+                Leb128::<u32>::encode(name.len() as u32, &mut payload);
                 payload.extend_from_slice(name.as_bytes());
                 payload.extend_from_slice(&section.bytes);
             }
             else {
                 payload.extend_from_slice(&section.bytes);
             }
-            write_uleb128(payload.len() as u32, &mut bytes);
+            Leb128::<u32>::encode(payload.len() as u32, &mut bytes);
             bytes.extend_from_slice(&payload);
         }
         Ok(bytes)
@@ -283,13 +291,7 @@ pub fn section_name(id: u8) -> &'static str {
 ///
 /// `0` 占 `1` 字节，每增加 `7` 位有效位多一字节。
 pub fn uleb128_size(value: u32) -> usize {
-    let mut size = 1;
-    let mut v = value >> 7;
-    while v != 0 {
-        size += 1;
-        v >>= 7;
-    }
-    size
+    Leb128::<u32>::encoded_size(value)
 }
 
 /// 跳过单个值类型。
@@ -371,19 +373,9 @@ impl<'a> WasmReader<'a> {
     }
 
     fn read_uleb128(&mut self) -> Result<u32, WasmBinaryError> {
-        let mut result = 0u32;
-        let mut shift = 0u32;
-        loop {
-            let byte = self.read_u8()?;
-            result |= ((byte & 0x7F) as u32) << shift;
-            if byte & 0x80 == 0 {
-                return Ok(result);
-            }
-            shift += 7;
-            if shift > 28 {
-                return Err(WasmBinaryError::InvalidLeb128);
-            }
-        }
+        let decoded = Leb128::<u32>::decode(self.bytes.get(self.offset..).unwrap_or(&[])).map_err(map_varint_error)?;
+        self.offset += decoded.input_consumed;
+        Ok(decoded.value)
     }
 
     fn read_remaining(&mut self) -> &'a [u8] {
@@ -393,34 +385,12 @@ impl<'a> WasmReader<'a> {
     }
 }
 
-fn write_uleb128(mut value: u32, output: &mut Vec<u8>) {
-    loop {
-        let mut byte = (value & 0x7F) as u8;
-        value >>= 7;
-        if value != 0 {
-            byte |= 0x80;
-        }
-        output.push(byte);
-        if value == 0 {
-            break;
-        }
-    }
-}
-
 /// 将无符号整数编码为 `ULEB128`。
 pub fn write_uleb128_public(value: u32, output: &mut Vec<u8>) {
-    write_uleb128(value, output);
+    Leb128::<u32>::encode(value, output);
 }
 
 /// 将有符号整数编码为 `SLEB128`（`i64`/`s33`）。
-pub fn write_sleb128_i64(mut value: i64, output: &mut Vec<u8>) {
-    loop {
-        let byte = (value & 0x7F) as u8;
-        value >>= 7;
-        let done = (value == 0 && (byte & 0x40) == 0) || (value == -1 && (byte & 0x40) != 0);
-        output.push(if done { byte } else { byte | 0x80 });
-        if done {
-            break;
-        }
-    }
+pub fn write_sleb128_i64(value: i64, output: &mut Vec<u8>) {
+    Leb128::<i64>::encode(value, output);
 }

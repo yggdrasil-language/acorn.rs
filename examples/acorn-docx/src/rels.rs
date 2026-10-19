@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use acorn_core::ParseBudget;
+use acorn_core::Budget;
 
 use crate::{
     OpcError, OpcPackage,
@@ -72,13 +72,13 @@ pub fn resolve_opc_target(source_part: &str, target: &str) -> String {
 
 impl OpcPackage {
     /// Reads and parses an OPC relationships part (for example `word/_rels/document.xml.rels`).
-    pub fn read_relationships(&self, path: &str, budget: &ParseBudget) -> Result<Vec<OpcRelationship>, OpcError> {
+    pub fn read_relationships(&self, path: &str, budget: &Budget) -> Result<Vec<OpcRelationship>, OpcError> {
         let xml = self.read_part(path, budget)?;
         parse_relationships(&xml)
     }
 
     /// Reads relationship targets keyed by id, returning an empty map when the part is absent.
-    pub fn read_relationship_targets(&self, path: &str, budget: &ParseBudget) -> Result<HashMap<String, String>, OpcError> {
+    pub fn read_relationship_targets(&self, path: &str, budget: &Budget) -> Result<HashMap<String, String>, OpcError> {
         match self.read_part(path, budget) {
             Ok(xml) => parse_relationship_targets(&xml),
             Err(OpcError::PartNotFound(_)) => Ok(HashMap::new()),
@@ -87,7 +87,7 @@ impl OpcPackage {
     }
 
     /// Reads package root relationships from `_rels/.rels`.
-    pub fn read_root_relationships(&self, budget: &ParseBudget) -> Result<Vec<OpcRelationship>, OpcError> {
+    pub fn read_root_relationships(&self, budget: &Budget) -> Result<Vec<OpcRelationship>, OpcError> {
         match self.read_relationships(ROOT_RELS_PATH, budget) {
             Ok(relationships) => Ok(relationships),
             Err(OpcError::PartNotFound(_)) => Ok(Vec::new()),
@@ -96,7 +96,7 @@ impl OpcPackage {
     }
 
     /// Resolves the main WordprocessingML document part path from root relationships.
-    pub fn main_document_part_path(&self, budget: &ParseBudget) -> Result<Option<String>, OpcError> {
+    pub fn main_document_part_path(&self, budget: &Budget) -> Result<Option<String>, OpcError> {
         for relationship in self.read_root_relationships(budget)? {
             if relationship.relationship_type == OFFICE_DOCUMENT_RELATIONSHIP_TYPE {
                 return Ok(Some(resolve_opc_target("", &relationship.target)));

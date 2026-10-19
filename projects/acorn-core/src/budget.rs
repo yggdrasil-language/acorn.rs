@@ -5,7 +5,7 @@ use crate::diagnostic::BudgetUsage;
 /// Composable limits for parsing work.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct ParseBudget {
+pub struct Budget {
     /// Maximum bytes read from raw sources.
     pub max_read_bytes: u64,
     /// Maximum bytes materialized in decoded spaces.
@@ -26,7 +26,7 @@ pub struct ParseBudget {
     pub max_cache_bytes: u64,
 }
 
-impl Default for ParseBudget {
+impl Default for Budget {
     fn default() -> Self {
         Self {
             max_read_bytes: 64 * 1024 * 1024,
@@ -86,18 +86,18 @@ impl std::error::Error for BudgetError {}
 /// Tracks budget consumption with checked reservation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct BudgetTracker {
-    limits: ParseBudget,
+    limits: Budget,
     usage: BudgetUsage,
 }
 
 impl BudgetTracker {
     /// Creates a tracker for the given limits.
-    pub fn new(limits: ParseBudget) -> Self {
+    pub fn new(limits: Budget) -> Self {
         Self { limits, usage: BudgetUsage::default() }
     }
 
     /// Returns the current limits.
-    pub const fn limits(&self) -> &ParseBudget {
+    pub const fn limits(&self) -> &Budget {
         &self.limits
     }
 

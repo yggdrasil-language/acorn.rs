@@ -6,17 +6,30 @@ pub enum ProbeAnchor {
     /// File start.
     Start,
     /// Fixed offset from the start of the current view.
-    Fixed(u64),
+    Fixed(
+        /// Absolute offset from the start of the surrounding view.
+        u64,
+    ),
     /// Tail window of `len` bytes ending at EOF.
-    Tail { len: u64 },
+    Tail {
+        /// Window length counted backwards from EOF.
+        len: u64,
+    },
     /// Bounded search window `[start, start + len)`.
-    Search { start: u64, len: u64 },
+    Search {
+        /// Offset where the search window begins.
+        start: u64,
+        /// Maximum bytes searched inside the window.
+        len: u64,
+    },
 }
 
 /// Bytes with an optional per-byte mask (`0xFF` = must match).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct BytePattern {
+    /// Expected bytes of the pattern.
     pub bytes: Vec<u8>,
+    /// Per-byte mask applied to both pattern and candidate.
     pub mask: Vec<u8>,
 }
 
@@ -41,9 +54,13 @@ impl BytePattern {
 /// Registered signature for one format adapter.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Signature {
+    /// Format identifier reported for a hit.
     pub format_id: String,
+    /// Anchor deciding which byte range is read for evidence.
     pub anchor: ProbeAnchor,
+    /// Masked byte pattern matched at the anchor.
     pub pattern: BytePattern,
+    /// Ordering priority, larger values are listed first.
     pub priority: u16,
 }
 

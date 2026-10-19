@@ -16,6 +16,9 @@ fn pdf_and_gzip_are_distinct_candidates() {
 
     let gzip = probe_memory("sample.gz", vec![0x1F, 0x8B, 0x08, 0x00]);
     assert!(gzip.iter().any(|hit| hit.format_id == "gzip"));
+
+    let zlib = probe_memory("sample.zlib", vec![0x78, 0x9C, 0x00, 0x00]);
+    assert!(zlib.iter().any(|hit| hit.format_id == "zlib"));
 }
 
 #[test]

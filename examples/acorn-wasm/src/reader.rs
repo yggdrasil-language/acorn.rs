@@ -3,7 +3,16 @@
 //! 封装游标式字节读取，提供 `LEB128` 变长整数、定长整数、
 //! 浮点数与块类型等基础解码能力，供指令解码层复用。
 
+use acorn_codec::{CodecError, integer::Leb128};
+
 use super::WasmBinaryError;
+
+fn map_varint_error(error: CodecError) -> WasmBinaryError {
+    match error {
+        CodecError::InputExhausted { .. } => WasmBinaryError::UnexpectedEof,
+        _ => WasmBinaryError::InvalidLeb128,
+    }
+}
 
 /// `WASM` 二进制字节读取器，封装游标与各类变长整数解码。
 pub struct WasmByteReader<'a> {
@@ -46,63 +55,23 @@ impl<'a> WasmByteReader<'a> {
 
     /// 读取无符号 `LEB128` 编码的 `u32`。
     pub fn read_uleb128(&mut self) -> Result<u32, WasmBinaryError> {
-        let mut result = 0u32;
-        let mut shift = 0u32;
-        loop {
-            let byte = self.read_u8()?;
-            result |= ((byte & 0x7F) as u32) << shift;
-            if byte & 0x80 == 0 {
-                return Ok(result);
-            }
-            shift += 7;
-            if shift > 35 {
-                return Err(WasmBinaryError::InvalidLeb128);
-            }
-        }
+        let decoded = Leb128::<u32>::decode(self.bytes.get(self.offset..).unwrap_or(&[])).map_err(map_varint_error)?;
+        self.offset += decoded.input_consumed;
+        Ok(decoded.value)
     }
 
     /// 读取有符号 `LEB128` 编码的 `i32`。
     pub fn read_sleb128_i32(&mut self) -> Result<i32, WasmBinaryError> {
-        let mut result = 0i32;
-        let mut shift = 0u32;
-        let mut byte;
-        loop {
-            byte = self.read_u8()?;
-            result |= ((byte & 0x7F) as i32) << shift;
-            shift += 7;
-            if byte & 0x80 == 0 {
-                break;
-            }
-            if shift > 35 {
-                return Err(WasmBinaryError::InvalidLeb128);
-            }
-        }
-        if shift < 32 && (byte & 0x40) != 0 {
-            result |= (!0i32) << shift;
-        }
-        Ok(result)
+        let decoded = Leb128::<i32>::decode(self.bytes.get(self.offset..).unwrap_or(&[])).map_err(map_varint_error)?;
+        self.offset += decoded.input_consumed;
+        Ok(decoded.value)
     }
 
     /// 读取有符号 `LEB128` 编码的 `i64`。
     pub fn read_sleb128_i64(&mut self) -> Result<i64, WasmBinaryError> {
-        let mut result = 0i64;
-        let mut shift = 0u32;
-        let mut byte;
-        loop {
-            byte = self.read_u8()?;
-            result |= ((byte & 0x7F) as i64) << shift;
-            shift += 7;
-            if byte & 0x80 == 0 {
-                break;
-            }
-            if shift > 70 {
-                return Err(WasmBinaryError::InvalidLeb128);
-            }
-        }
-        if shift < 64 && (byte & 0x40) != 0 {
-            result |= (!0i64) << shift;
-        }
-        Ok(result)
+        let decoded = Leb128::<i64>::decode(self.bytes.get(self.offset..).unwrap_or(&[])).map_err(map_varint_error)?;
+        self.offset += decoded.input_consumed;
+        Ok(decoded.value)
     }
 
     /// 读取小端序 `f32`。

@@ -1,8 +1,6 @@
-use std::io::Read;
-
-use acorn_core::ParseBudget;
+use acorn_codec::{CodecError, CodecLimits, compression::RawDeflate};
+use acorn_core::Budget;
 use acorn_source::{ByteSource, MemorySource, ReadOutcome};
-use flate2::read::DeflateDecoder;
 
 use crate::{
     entry::ZipMember,
@@ -42,7 +40,7 @@ pub fn decode_member_with_facts<S: ByteSource>(
     label: impl Into<String>,
     source: S,
     member: &ZipMember,
-    budget: &ParseBudget,
+    budget: &Budget,
 ) -> Result<(MemorySource, MemberDecodeFacts), ZipViewError> {
     let compressed = read_raw_payload(source, member)?;
     let budget_read_bytes = compressed.len() as u64;
@@ -60,7 +58,15 @@ pub fn decode_member_with_facts<S: ByteSource>(
             }
             (compressed, true)
         }
-        COMPRESSION_DEFLATE => inflate_deflate_complete(&compressed, member.uncompressed_size, budget.max_decoded_bytes)?,
+        COMPRESSION_DEFLATE => {
+            if member.uncompressed_size > budget.max_decoded_bytes {
+                return Err(ZipViewError::BudgetExceeded);
+            }
+            let limits = CodecLimits::new().with_max_output_bytes(budget.max_decoded_bytes);
+            let facts = RawDeflate::decode(&compressed, limits).map_err(map_codec_error)?;
+            let fully_consumed = facts.deflate_stream_complete(compressed.len());
+            (facts.value, fully_consumed)
+        }
         other => return Err(ZipViewError::UnsupportedCompression(other)),
     };
 
@@ -98,37 +104,14 @@ pub fn decode_member<S: ByteSource>(
     label: impl Into<String>,
     source: S,
     member: &ZipMember,
-    budget: &ParseBudget,
+    budget: &Budget,
 ) -> Result<MemorySource, ZipViewError> {
     let (decoded, _facts) = decode_member_with_facts(label, source, member, budget)?;
     Ok(decoded)
 }
 
-fn inflate_deflate_complete(
-    input: &[u8],
-    expected_uncompressed: u64,
-    max_output: u64,
-) -> Result<(Vec<u8>, bool), ZipViewError> {
-    if expected_uncompressed > max_output {
-        return Err(ZipViewError::BudgetExceeded);
-    }
-    let mut decoder = DeflateDecoder::new(input);
-    let mut output = Vec::new();
-    let mut buf = [0u8; 8 * 1024];
-    loop {
-        match decoder.read(&mut buf) {
-            Ok(0) => break,
-            Ok(n) => {
-                if (output.len() as u64).saturating_add(n as u64) > max_output {
-                    return Err(ZipViewError::BudgetExceeded);
-                }
-                output.extend_from_slice(&buf[..n]);
-            }
-            Err(_) => return Err(ZipViewError::DecompressFailed),
-        }
-    }
-    let fully_consumed = decoder.total_in() as usize == input.len();
-    Ok((output, fully_consumed))
+fn map_codec_error(error: CodecError) -> ZipViewError {
+    if error.is_resource_limit() { ZipViewError::BudgetExceeded } else { ZipViewError::DecompressFailed }
 }
 
 fn ieee_crc32(bytes: &[u8]) -> u32 {
@@ -148,11 +131,7 @@ fn ieee_crc32(bytes: &[u8]) -> u32 {
 }
 
 /// Reads and decodes a member payload into an owned buffer.
-pub fn read_member_payload<S: ByteSource>(
-    source: S,
-    member: &ZipMember,
-    budget: &ParseBudget,
-) -> Result<Vec<u8>, ZipViewError> {
+pub fn read_member_payload<S: ByteSource>(source: S, member: &ZipMember, budget: &Budget) -> Result<Vec<u8>, ZipViewError> {
     let decoded = decode_member("zip-member", source, member, budget)?;
     let length = decoded.length().ok_or(ZipViewError::InvalidRange)? as usize;
     let mut buffer = vec![0u8; length];
