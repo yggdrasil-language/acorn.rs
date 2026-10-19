@@ -5,9 +5,9 @@ use std::{
     io,
 };
 
-use acorn_core::Budget;
+use acorn_core::{Budget, BudgetTracker};
 use acorn_source::{ByteSource, MemorySource, ReadOutcome};
-use acorn_zip::{ZipIndexError, ZipViewError, decode_member, index_zip_bytes};
+use acorn_zip::{ZipIndexError, ZipViewError, decode_member, index_zip};
 use serde::{Deserialize, Serialize};
 
 use crate::class::{JvmClassError, JvmClassFile};
@@ -142,16 +142,15 @@ impl JvmJarPackage {
 
     /// 从二进制归档解码出 `JAR` 模型。容器索引用 `acorn-zip`。
     pub fn from_bytes(file_name: impl Into<String>, bytes: &[u8]) -> Result<Self, JvmJarError> {
-        let owned = bytes.to_vec();
-        let index = index_zip_bytes("jar", owned.clone())?;
+        let source = MemorySource::from_bytes("jar", bytes.to_vec());
+        let index = index_zip(&source)?;
         let mut package = Self::new(file_name);
-        let budget = Budget::default();
+        let mut ledger = BudgetTracker::new(Budget::default());
         for member in &index.members {
             if member.path.ends_with('/') {
                 continue;
             }
-            let source = MemorySource::from_bytes("jar", owned.clone());
-            let decoded = decode_member(member.path.clone(), source, member, &budget)?;
+            let decoded = decode_member(member.path.clone(), source.clone(), member, &mut ledger)?;
             let entry_bytes = read_source(&decoded)?;
             if member.path.eq_ignore_ascii_case(MANIFEST_PATH) {
                 package.main_class = parse_manifest_main_class(&entry_bytes);

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use acorn_core::Budget;
+use acorn_core::BudgetTracker;
 
 use crate::{
     OpcError, OpcPackage,
@@ -72,14 +72,18 @@ pub fn resolve_opc_target(source_part: &str, target: &str) -> String {
 
 impl OpcPackage {
     /// Reads and parses an OPC relationships part (for example `word/_rels/document.xml.rels`).
-    pub fn read_relationships(&self, path: &str, budget: &Budget) -> Result<Vec<OpcRelationship>, OpcError> {
-        let xml = self.read_part(path, budget)?;
+    pub fn read_relationships(&self, path: &str, ledger: &mut BudgetTracker) -> Result<Vec<OpcRelationship>, OpcError> {
+        let xml = self.read_part(path, ledger)?;
         parse_relationships(&xml)
     }
 
     /// Reads relationship targets keyed by id, returning an empty map when the part is absent.
-    pub fn read_relationship_targets(&self, path: &str, budget: &Budget) -> Result<HashMap<String, String>, OpcError> {
-        match self.read_part(path, budget) {
+    pub fn read_relationship_targets(
+        &self,
+        path: &str,
+        ledger: &mut BudgetTracker,
+    ) -> Result<HashMap<String, String>, OpcError> {
+        match self.read_part(path, ledger) {
             Ok(xml) => parse_relationship_targets(&xml),
             Err(OpcError::PartNotFound(_)) => Ok(HashMap::new()),
             Err(error) => Err(error),
@@ -87,8 +91,8 @@ impl OpcPackage {
     }
 
     /// Reads package root relationships from `_rels/.rels`.
-    pub fn read_root_relationships(&self, budget: &Budget) -> Result<Vec<OpcRelationship>, OpcError> {
-        match self.read_relationships(ROOT_RELS_PATH, budget) {
+    pub fn read_root_relationships(&self, ledger: &mut BudgetTracker) -> Result<Vec<OpcRelationship>, OpcError> {
+        match self.read_relationships(ROOT_RELS_PATH, ledger) {
             Ok(relationships) => Ok(relationships),
             Err(OpcError::PartNotFound(_)) => Ok(Vec::new()),
             Err(error) => Err(error),
@@ -96,8 +100,8 @@ impl OpcPackage {
     }
 
     /// Resolves the main WordprocessingML document part path from root relationships.
-    pub fn main_document_part_path(&self, budget: &Budget) -> Result<Option<String>, OpcError> {
-        for relationship in self.read_root_relationships(budget)? {
+    pub fn main_document_part_path(&self, ledger: &mut BudgetTracker) -> Result<Option<String>, OpcError> {
+        for relationship in self.read_root_relationships(ledger)? {
             if relationship.relationship_type == OFFICE_DOCUMENT_RELATIONSHIP_TYPE {
                 return Ok(Some(resolve_opc_target("", &relationship.target)));
             }

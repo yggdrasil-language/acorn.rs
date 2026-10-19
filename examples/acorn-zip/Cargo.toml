@@ -12,5 +12,4 @@ publish = false
 [dependencies]
 acorn-codec = { workspace = true, features = ["compression"] }
 acorn-core = { workspace = true }
-acorn-probe = { workspace = true }
 acorn-source = { workspace = true }

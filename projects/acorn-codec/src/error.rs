@@ -1,6 +1,6 @@
 //! Codec errors independent of format adapters and parse budgets.
 
-use crate::bit::BitPosition;
+use crate::{bit::BitPosition, facts::StreamState};
 
 /// Expansion ratio limit expressed as output/input.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -44,6 +44,8 @@ pub enum CodecFeature {
     CompressionMethod(u8),
     /// Unsupported Huffman block type.
     BlockType(u8),
+    /// Zlib preset dictionary (\FDICT\), which needs an initialized window.
+    PresetDictionary,
 }
 
 /// Errors raised by representation transforms in `acorn-codec`.
@@ -138,6 +140,13 @@ pub enum CodecError {
         /// Bytes available at the reference point.
         available: u32,
     },
+    /// A match length fell outside the range a Deflate length symbol expresses.
+    InvalidMatchLength {
+        /// Bit position of the offending symbol.
+        position: BitPosition,
+        /// Requested match length.
+        length: u16,
+    },
     /// Envelope checksum did not match.
     ChecksumMismatch {
         /// Checksum algorithm.
@@ -161,6 +170,20 @@ pub enum CodecError {
         /// Length of trailing input.
         length: u64,
     },
+    /// Buffered input would exceed the caller-provided input limit.
+    InputLimitExceeded {
+        /// Bytes already buffered.
+        buffered: u64,
+        /// Bytes offered by the rejected chunk.
+        offered: u64,
+        /// Buffered input limit that would be exceeded.
+        limit: u64,
+    },
+    /// The call is not valid for the decoder's current stream state.
+    InvalidStreamState {
+        /// State the decoder was in when the call arrived.
+        state: StreamState,
+    },
     /// Feature is not supported by this build or profile.
     UnsupportedFeature {
         /// Unsupported feature identifier.
@@ -178,7 +201,7 @@ impl CodecError {
     /// decompression failures.
     #[inline]
     pub const fn is_resource_limit(&self) -> bool {
-        matches!(self, Self::OutputLimitExceeded { .. } | Self::ExpansionRatioExceeded { .. })
+        matches!(self, Self::InputLimitExceeded { .. } | Self::OutputLimitExceeded { .. } | Self::ExpansionRatioExceeded { .. })
     }
 }
 
@@ -224,6 +247,9 @@ impl std::fmt::Display for CodecError {
             Self::InvalidBackReference { position, distance, available } => {
                 write!(f, "codec invalid back-reference distance {distance} (available {available}) at {position}")
             }
+            Self::InvalidMatchLength { position, length } => {
+                write!(f, "codec invalid match length {length} at {position}")
+            }
             Self::ChecksumMismatch { algorithm, expected, actual } => {
                 write!(f, "codec checksum mismatch ({algorithm:?}): expected {expected:#x}, actual {actual:#x}")
             }
@@ -232,6 +258,12 @@ impl std::fmt::Display for CodecError {
             }
             Self::TrailingInput { offset, length } => {
                 write!(f, "codec trailing input: {length} byte(s) at offset {offset}")
+            }
+            Self::InputLimitExceeded { buffered, offered, limit } => {
+                write!(f, "codec input limit exceeded: buffered {buffered} plus offered {offered} over limit {limit}")
+            }
+            Self::InvalidStreamState { state } => {
+                write!(f, "codec stream call is invalid in state {state:?}")
             }
             Self::UnsupportedFeature { feature } => {
                 write!(f, "codec unsupported feature: {feature:?}")
