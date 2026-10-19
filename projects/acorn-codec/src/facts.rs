@@ -48,6 +48,8 @@ impl<T> DecodeFacts<T> {
 /// Checksum facts from envelope validation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ChecksumFacts {
+    /// Algorithm that produced `value`.
+    pub algorithm: crate::error::ChecksumAlgorithm,
     /// Computed checksum value.
     pub value: u64,
     /// Whether the checksum matched the trailer.
@@ -75,6 +77,19 @@ impl StreamFacts {
     pub fn fully_consumed(&self, total_input: usize) -> bool {
         self.complete && self.trailing_input == 0 && self.input_consumed == total_input as u64
     }
+}
+
+/// Lifecycle state of a buffered stream decode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StreamState {
+    /// No input chunk has been accepted yet.
+    Created,
+    /// Input chunks are buffered and no decode has run yet.
+    Receiving,
+    /// A decode completed and recorded facts. No further input is accepted.
+    Complete,
+    /// A decode failed. The decoder keeps the failure state and accepts no further input.
+    Failed,
 }
 
 /// Byte decode result with attached facts.

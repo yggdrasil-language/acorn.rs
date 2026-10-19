@@ -2,15 +2,24 @@
 //!
 //! `Deflate` owns the bitstream, block, Huffman, and sliding window rules. It
 //! has no header, trailer, or member concept of its own, so callers that need
-//! an envelope use [`crate::compression::envelope`].
+//! a zlib or gzip envelope use [crate::compression::Zlib] or [crate::compression::Gzip].
 
+mod block;
 mod decoder;
+mod encoder;
 mod huffman;
 mod window;
 
 use crate::{error::CodecError, facts::DecodeFacts, limits::CodecLimits};
 
 use super::stream::{CompressionProtocol, StreamDecoder};
+
+pub use self::{
+    block::{
+        DeflateBlock, DeflateBlockPlan, FixedBlock, StoredBlock, Symbol, write_block, write_fixed_block, write_stored_block,
+    },
+    encoder::{DeflateEncoder, DeflateLevel},
+};
 
 /// Raw Deflate stream algorithm.
 #[derive(Debug, Clone, Copy, Default)]
@@ -22,19 +31,13 @@ impl Deflate {
         decoder::decode_raw(input, limits)
     }
 
+    /// Encodes `input` as a raw Deflate stream.
+    pub fn encode(input: &[u8], level: DeflateLevel) -> Vec<u8> {
+        DeflateEncoder::new(level).encode(input)
+    }
+
     /// Creates a buffered stream decoder for raw Deflate.
     pub fn decoder(limits: CodecLimits) -> StreamDecoder {
-        StreamDecoder::new(CompressionProtocol::RawDeflate, limits)
+        StreamDecoder::new(CompressionProtocol::Deflate, limits)
     }
-}
-
-/// Encodes `data` as a single stored Deflate block (used by envelope writers and tests).
-pub fn encode_stored(data: &[u8]) -> Vec<u8> {
-    let mut output = Vec::with_capacity(5 + data.len());
-    output.push(0x01);
-    let len = data.len() as u16;
-    output.extend_from_slice(&len.to_le_bytes());
-    output.extend_from_slice(&(len ^ 0xFFFF).to_le_bytes());
-    output.extend_from_slice(data);
-    output
 }

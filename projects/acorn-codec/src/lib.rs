@@ -22,7 +22,7 @@ mod scalar;
 mod slice;
 
 pub use error::{ChecksumAlgorithm, CodecError, CodecFeature, EnvelopeKind, Ratio};
-pub use facts::{ByteDecode, Canonicality, ChecksumFacts, DecodeFacts, StreamFacts};
+pub use facts::{ByteDecode, Canonicality, ChecksumFacts, DecodeFacts, StreamFacts, StreamState};
 pub use limits::CodecLimits;
 pub use scalar::ScalarTransform;
 pub use slice::SliceCodec;

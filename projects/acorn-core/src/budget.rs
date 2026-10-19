@@ -63,6 +63,8 @@ pub enum BudgetError {
     ScanBytes,
     /// Cache budget exhausted.
     CacheBytes,
+    /// Settlement or release exceeded the bytes that were reserved.
+    Unreserved,
 }
 
 impl fmt::Display for BudgetError {
@@ -77,23 +79,32 @@ impl fmt::Display for BudgetError {
             Self::PointerHops => write!(f, "pointer hop budget exhausted"),
             Self::ScanBytes => write!(f, "scan byte budget exhausted"),
             Self::CacheBytes => write!(f, "cache byte budget exhausted"),
+            Self::Unreserved => write!(f, "settlement or release exceeded the reserved bytes"),
         }
     }
 }
 
 impl std::error::Error for BudgetError {}
 
-/// Tracks budget consumption with checked reservation.
+/// Tracks budget consumption with checked reservation, settlement, and release.
+///
+/// Settled consumption is cumulative work and cannot be given back. Reserved bytes
+/// are held for work that has not run yet and count against the limit until they are
+/// settled or released. Retained bytes are live memory, and their high-water mark is
+/// kept apart from cumulative reads and decodes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct BudgetTracker {
     limits: Budget,
     usage: BudgetUsage,
+    reserved_read_bytes: u64,
+    reserved_decoded_bytes: u64,
+    peak_cache_bytes: u64,
 }
 
 impl BudgetTracker {
     /// Creates a tracker for the given limits.
     pub fn new(limits: Budget) -> Self {
-        Self { limits, usage: BudgetUsage::default() }
+        Self { limits, usage: BudgetUsage::default(), reserved_read_bytes: 0, reserved_decoded_bytes: 0, peak_cache_bytes: 0 }
     }
 
     /// Returns the current limits.
@@ -106,23 +117,144 @@ impl BudgetTracker {
         &self.usage
     }
 
-    /// Reserves additional raw read bytes.
+    /// Returns read bytes that are reserved but not yet settled.
+    pub const fn reserved_read_bytes(&self) -> u64 {
+        self.reserved_read_bytes
+    }
+
+    /// Returns decoded bytes that are reserved but not yet settled.
+    pub const fn reserved_decoded_bytes(&self) -> u64 {
+        self.reserved_decoded_bytes
+    }
+
+    /// Returns the largest retained byte count observed so far.
+    pub const fn peak_cache_bytes(&self) -> u64 {
+        self.peak_cache_bytes
+    }
+
+    /// Reserves raw read bytes for work that has not read them yet.
+    ///
+    /// Outstanding reservations count against the limit together with settled
+    /// consumption, so two callers cannot hold the same allowance at the same time.
     pub fn reserve_read_bytes(&mut self, bytes: u64) -> Result<(), BudgetError> {
-        let next = self.usage.read_bytes.checked_add(bytes).ok_or(BudgetError::ReadBytes)?;
-        if next > self.limits.max_read_bytes {
+        let held = self
+            .usage
+            .read_bytes
+            .checked_add(self.reserved_read_bytes)
+            .and_then(|held| held.checked_add(bytes))
+            .ok_or(BudgetError::ReadBytes)?;
+        if held > self.limits.max_read_bytes {
             return Err(BudgetError::ReadBytes);
         }
-        self.usage.read_bytes = next;
+        self.reserved_read_bytes = held - self.usage.read_bytes;
         Ok(())
     }
 
-    /// Reserves additional decoded bytes.
+    /// Records the bytes a reserved read actually consumed.
+    ///
+    /// `actual` must fit inside the outstanding reservation. Held bytes that the read
+    /// did not need stay reserved until they are released.
+    pub fn settle_read_bytes(&mut self, actual: u64) -> Result<(), BudgetError> {
+        let remaining = self.reserved_read_bytes.checked_sub(actual).ok_or(BudgetError::Unreserved)?;
+        let consumed = self.usage.read_bytes.checked_add(actual).ok_or(BudgetError::ReadBytes)?;
+        if consumed > self.limits.max_read_bytes {
+            return Err(BudgetError::ReadBytes);
+        }
+        self.reserved_read_bytes = remaining;
+        self.usage.read_bytes = consumed;
+        Ok(())
+    }
+
+    /// Releases reserved read bytes that the work did not consume.
+    pub fn release_read_bytes(&mut self, bytes: u64) -> Result<(), BudgetError> {
+        let remaining = self.reserved_read_bytes.checked_sub(bytes).ok_or(BudgetError::Unreserved)?;
+        self.reserved_read_bytes = remaining;
+        Ok(())
+    }
+
+    /// Reserves decoded bytes for work that has not produced them yet.
     pub fn reserve_decoded_bytes(&mut self, bytes: u64) -> Result<(), BudgetError> {
-        let next = self.usage.decoded_bytes.checked_add(bytes).ok_or(BudgetError::DecodedBytes)?;
-        if next > self.limits.max_decoded_bytes {
+        let held = self
+            .usage
+            .decoded_bytes
+            .checked_add(self.reserved_decoded_bytes)
+            .and_then(|held| held.checked_add(bytes))
+            .ok_or(BudgetError::DecodedBytes)?;
+        if held > self.limits.max_decoded_bytes {
             return Err(BudgetError::DecodedBytes);
         }
-        self.usage.decoded_bytes = next;
+        self.reserved_decoded_bytes = held - self.usage.decoded_bytes;
+        Ok(())
+    }
+
+    /// Records the bytes a reserved decode actually produced.
+    pub fn settle_decoded_bytes(&mut self, actual: u64) -> Result<(), BudgetError> {
+        let remaining = self.reserved_decoded_bytes.checked_sub(actual).ok_or(BudgetError::Unreserved)?;
+        let consumed = self.usage.decoded_bytes.checked_add(actual).ok_or(BudgetError::DecodedBytes)?;
+        if consumed > self.limits.max_decoded_bytes {
+            return Err(BudgetError::DecodedBytes);
+        }
+        self.reserved_decoded_bytes = remaining;
+        self.usage.decoded_bytes = consumed;
+        Ok(())
+    }
+
+    /// Releases reserved decoded bytes that the work did not produce.
+    pub fn release_decoded_bytes(&mut self, bytes: u64) -> Result<(), BudgetError> {
+        let remaining = self.reserved_decoded_bytes.checked_sub(bytes).ok_or(BudgetError::Unreserved)?;
+        self.reserved_decoded_bytes = remaining;
+        Ok(())
+    }
+
+    /// Reserves bytes that stay live while the work runs.
+    ///
+    /// Retained bytes are bounded by `max_cache_bytes`. The tracker keeps their
+    /// high-water mark so peak retention can be reported apart from cumulative reads
+    /// and decodes.
+    pub fn reserve_cache_bytes(&mut self, bytes: u64) -> Result<(), BudgetError> {
+        let next = self.usage.cache_bytes.checked_add(bytes).ok_or(BudgetError::CacheBytes)?;
+        if next > self.limits.max_cache_bytes {
+            return Err(BudgetError::CacheBytes);
+        }
+        self.usage.cache_bytes = next;
+        self.peak_cache_bytes = self.peak_cache_bytes.max(next);
+        Ok(())
+    }
+
+    /// Releases retained bytes that are no longer live.
+    pub fn release_cache_bytes(&mut self, bytes: u64) -> Result<(), BudgetError> {
+        let remaining = self.usage.cache_bytes.checked_sub(bytes).ok_or(BudgetError::Unreserved)?;
+        self.usage.cache_bytes = remaining;
+        Ok(())
+    }
+
+    /// Reserves bytes scanned during a signature or window search.
+    pub fn reserve_scan_bytes(&mut self, bytes: u64) -> Result<(), BudgetError> {
+        let next = self.usage.scan_bytes.checked_add(bytes).ok_or(BudgetError::ScanBytes)?;
+        if next > self.limits.max_scan_bytes {
+            return Err(BudgetError::ScanBytes);
+        }
+        self.usage.scan_bytes = next;
+        Ok(())
+    }
+
+    /// Reserves one container member for the current query.
+    pub fn reserve_container_member(&mut self) -> Result<(), BudgetError> {
+        let next = self.usage.container_members.checked_add(1).ok_or(BudgetError::ContainerMembers)?;
+        if next > self.limits.max_container_members {
+            return Err(BudgetError::ContainerMembers);
+        }
+        self.usage.container_members = next;
+        Ok(())
+    }
+
+    /// Reserves one reference edge.
+    pub fn reserve_reference(&mut self) -> Result<(), BudgetError> {
+        let next = self.usage.references.checked_add(1).ok_or(BudgetError::References)?;
+        if next > self.limits.max_references {
+            return Err(BudgetError::References);
+        }
+        self.usage.references = next;
         Ok(())
     }
 

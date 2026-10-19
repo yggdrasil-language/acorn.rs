@@ -48,7 +48,42 @@ pub fn find_eocd(bytes: &[u8]) -> Option<EndOfCentralDirectory> {
     None
 }
 
+/// Locates and parses the EOCD near the end of `bytes` without requiring the
+/// central directory to be inside the same buffer.
+///
+/// A bounded reader passes only the tail of a large archive, so the directory check
+/// has to run after the record is found and its offset is known.
+pub fn scan_eocd_fields(bytes: &[u8]) -> Option<EndOfCentralDirectory> {
+    if bytes.len() < EOCD_MIN_SIZE {
+        return None;
+    }
+    let search_start = bytes.len().saturating_sub(EOCD_MIN_SIZE + MAX_COMMENT);
+    for offset in (search_start..bytes.len()).rev() {
+        if read_u32_le(bytes, offset) != Some(EOCD_SIGNATURE) {
+            continue;
+        }
+        if let Some(record) = parse_eocd_fields(bytes, offset) {
+            return Some(record);
+        }
+    }
+    None
+}
+
 fn parse_eocd(bytes: &[u8], offset: usize) -> Option<EndOfCentralDirectory> {
+    let record = parse_eocd_fields(bytes, offset)?;
+    if !eocd_points_at_central_directory(
+        bytes,
+        offset,
+        record.entry_count,
+        record.central_directory_offset,
+        record.central_directory_size,
+    ) {
+        return None;
+    }
+    Some(record)
+}
+
+fn parse_eocd_fields(bytes: &[u8], offset: usize) -> Option<EndOfCentralDirectory> {
     if offset + EOCD_MIN_SIZE > bytes.len() {
         return None;
     }
@@ -70,10 +105,6 @@ fn parse_eocd(bytes: &[u8], offset: usize) -> Option<EndOfCentralDirectory> {
         else {
             (entry_count16 as u64, cd_size32 as u64, cd_offset32 as u64, false)
         };
-
-    if !eocd_points_at_central_directory(bytes, offset, entry_count, central_directory_offset, central_directory_size) {
-        return None;
-    }
 
     Some(EndOfCentralDirectory {
         offset: offset as u64,

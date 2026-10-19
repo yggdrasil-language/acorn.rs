@@ -17,7 +17,7 @@ mod window;
 mod write;
 
 pub use capabilities::SourceCapabilities;
-pub use identity::SourceIdentity;
+pub use identity::{SourceIdentity, content_digest_of};
 pub use memory::MemorySource;
 pub use memory_sink::MemorySink;
 pub use partial_source::RangeMapSource;

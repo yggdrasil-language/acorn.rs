@@ -82,6 +82,16 @@ impl<S: ByteSource> ByteSource for ByteWindow<S> {
     }
 
     fn identity(&self) -> SourceIdentity {
-        self.source.identity()
+        // A window is a different source than its parent. Two windows over the same
+        // bytes must not claim one identity, so the outer interval becomes part of
+        // the label while the content digest stays anchored to the parent bytes.
+        let outer = self.source.identity();
+        let start = self.base.saturating_add(self.range.start);
+        let end = start.saturating_add(self.range.len);
+        SourceIdentity {
+            label: format!("{}[{}..{}]", outer.label, start, end),
+            version: outer.version,
+            content_digest: outer.content_digest,
+        }
     }
 }

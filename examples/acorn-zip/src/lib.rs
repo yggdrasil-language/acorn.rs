@@ -10,7 +10,7 @@ mod zip64;
 
 pub use decode::{MemberDecodeFacts, decode_member, decode_member_with_facts, read_member_payload};
 pub use entry::ZipMember;
-pub use eocd::{EndOfCentralDirectory, find_eocd};
+pub use eocd::{EndOfCentralDirectory, find_eocd, scan_eocd_fields};
 pub use index::{ZipArchiveIndex, ZipIndexError, index_zip, index_zip_bytes};
 pub use view::{
     COMPRESSION_DEFLATE, COMPRESSION_STORED, ZipViewError, member_payload_range, open_stored_member, read_raw_payload,

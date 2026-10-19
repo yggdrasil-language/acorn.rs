@@ -42,8 +42,6 @@ jobs:
 
       - name: Check format adapters
         run: |
-          cargo check --manifest-path examples/acorn-gzip/Cargo.toml --all-targets
-          cargo check --manifest-path examples/acorn-zlib/Cargo.toml --all-targets
 
   rust-test:
     name: Rust Test (${{ matrix.os }}, ${{ matrix.feature }})
@@ -87,5 +85,3 @@ jobs:
         if: matrix.feature == 'all'
         run: |
           cargo test -p acorn-codec --all-features --test main --no-fail-fast
-          cargo test -p acorn-gzip --test main --no-fail-fast
-          cargo test -p acorn-zlib --test main --no-fail-fast

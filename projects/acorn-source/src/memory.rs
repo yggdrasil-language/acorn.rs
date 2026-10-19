@@ -1,6 +1,6 @@
 use crate::{
     capabilities::SourceCapabilities,
-    identity::SourceIdentity,
+    identity::{SourceIdentity, content_digest_of},
     read::{ReadOutcome, ReadResult},
     source::ByteSource,
 };
@@ -14,8 +14,12 @@ pub struct MemorySource {
 
 impl MemorySource {
     /// Creates a source from owned bytes.
+    ///
+    /// The bytes are materialized here, so the identity carries their digest and a
+    /// cached snapshot can be proven current or stale later.
     pub fn from_bytes(label: impl Into<String>, bytes: Vec<u8>) -> Self {
-        Self { bytes, identity: SourceIdentity::new(label) }
+        let identity = SourceIdentity::new(label).with_content_digest(content_digest_of(&bytes));
+        Self { bytes, identity }
     }
 
     /// Creates a source from a static slice.

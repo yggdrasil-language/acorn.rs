@@ -57,6 +57,14 @@ pub enum ReadError {
         /// Why the interval is unavailable.
         reason: String,
     },
+    /// A supplied range contradicts bytes already known for that interval.
+    ///
+    /// Two different byte values for one offset mean the underlying source changed,
+    /// so the stale snapshot is reported instead of being patched silently.
+    ConflictingRange {
+        /// Interval where the contradiction was found.
+        range: SourceRange,
+    },
 }
 
 impl std::fmt::Display for ReadError {
@@ -68,6 +76,9 @@ impl std::fmt::Display for ReadError {
             }
             Self::Eof => write!(f, "unexpected eof"),
             Self::Unavailable { reason, .. } => write!(f, "unavailable range: {reason}"),
+            Self::ConflictingRange { range } => {
+                write!(f, "conflicting bytes already known for range {}..{}", range.start, range.start + range.len)
+            }
         }
     }
 }
