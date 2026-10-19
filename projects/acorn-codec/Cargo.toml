@@ -1,0 +1,18 @@
+[package]
+name = "acorn-codec"
+version.workspace = true
+authors.workspace = true
+description = "Base data codecs for Acorn: deflate, varint, zigzag, base64, and related transforms."
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository = "https://github.com/yggdrasil-language/acorn.rs/tree/dev/projects/acorn-codec"
+categories = ["encoding", "compression"]
+keywords = ["binary", "codec", "deflate", "varint"]
+
+[features]
+default = []
+compression = []
+
+[package.metadata.docs.rs]
+all-features = true

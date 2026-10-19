@@ -1,4 +1,4 @@
-#![warn(missing_docs)]
+#![deny(missing_docs)]
 //! Magic-byte probing and format candidate collection for Acorn.
 //!
 //! Signatures produce ranked `ProbeCandidate` values with evidence ranges.

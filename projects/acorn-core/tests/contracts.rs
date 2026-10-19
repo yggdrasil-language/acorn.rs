@@ -1,5 +1,5 @@
 use acorn_core::{
-    Address, AddressSpaceId, Availability, BudgetTracker, ByteRange, NodeState, ParseBudget, Provenance, RangeError, Span,
+    Address, AddressSpaceId, Availability, Budget, BudgetTracker, ByteRange, NodeState, Provenance, RangeError, Span,
 };
 
 #[test]
@@ -42,7 +42,7 @@ fn node_state_promotion_is_monotonic() {
 
 #[test]
 fn budget_tracker_enforces_read_limit() {
-    let mut tracker = BudgetTracker::new(ParseBudget { max_read_bytes: 16, ..ParseBudget::default() });
+    let mut tracker = BudgetTracker::new(Budget { max_read_bytes: 16, ..Budget::default() });
     assert!(tracker.reserve_read_bytes(8).is_ok());
     assert!(tracker.reserve_read_bytes(8).is_ok());
     assert!(tracker.reserve_read_bytes(1).is_err());

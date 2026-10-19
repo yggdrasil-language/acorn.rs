@@ -8,4 +8,5 @@ description = "Wasm binary format encoding and decoding (Acorn domain)"
 repository = "https://github.com/nyar-vm/nyar-vm.rs"
 
 [dependencies]
+acorn-codec = { workspace = true }
 serde = { workspace = true }

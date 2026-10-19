@@ -1,4 +1,4 @@
-name: Rust
+name: Check Rust
 
 on:
   push:
@@ -8,27 +8,84 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
 
 jobs:
-  build:
-    runs-on: ${{ matrix.os }}
+  rust-check:
+    name: Rust Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rustfmt
+
+      - name: Cache cargo registry
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Check default members
+        run: cargo check --all-targets --all-features
+
+      - name: Check format adapters
+        run: |
+          cargo check --manifest-path examples/acorn-gzip/Cargo.toml --all-targets
+          cargo check --manifest-path examples/acorn-zlib/Cargo.toml --all-targets
+
+  rust-test:
+    name: Rust Test (${{ matrix.os }}, ${{ matrix.feature }})
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        feature: [no-default, default, all]
+    runs-on: ${{ matrix.os }}
     steps:
-      - name: Disable autocrlf
-        run: git config --global core.autocrlf false
+      - name: Checkout repository
+        uses: actions/checkout@v5
 
-      - uses: actions/checkout@v4
-
-      - name: Install nightly Rust
+      - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@nightly
+
+      - name: Cache cargo registry
+        uses: actions/cache@v5
         with:
-          components: rustfmt, clippy
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
 
-      - name: Build
-        run: cargo build --release --workspace
+      - name: Run tests (no feature)
+        if: matrix.feature == 'no-default'
+        run: cargo test --lib --tests --no-default-features --no-fail-fast
 
-      - name: Tests
-        run: cargo test --release --workspace
+      - name: Run tests (default features)
+        if: matrix.feature == 'default'
+        run: cargo test --lib --tests --no-fail-fast
+
+      - name: Run tests (all features)
+        if: matrix.feature == 'all'
+        run: cargo test --lib --tests --all-features --no-fail-fast
+
+      - name: Test compression adapters
+        if: matrix.feature == 'all'
+        run: |
+          cargo test -p acorn-codec --all-features --test main --no-fail-fast
+          cargo test -p acorn-gzip --test main --no-fail-fast
+          cargo test -p acorn-zlib --test main --no-fail-fast

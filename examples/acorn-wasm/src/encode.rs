@@ -3,10 +3,11 @@
 //! 覆盖后端 emitter 当前需要的指令形状，提供语义 API，避免手写操作码字节。
 //! 二进制字面量仅出现在本模块与 [`super::opcode`] / [`super::section`] 的 encode 实现中。
 
+use acorn_codec::integer::Leb128;
+
 use super::{
     opcode::{WasmGcOpcode, WasmMiscOpcode, WasmOpcode},
     section::{WasmExternalKind, WasmHeapType, WasmValueType},
-    write_sleb128_i64, write_uleb128,
 };
 
 /// 空块类型立即数（`blocktype` = `0x40`）。
@@ -60,39 +61,31 @@ pub const VALTYPE_REF: u8 = 0x64;
 pub const VALTYPE_REF_NULL: u8 = 0x63;
 
 /// 将有符号 `i32` 编码为 `SLEB128`。
-pub fn write_sleb128_i32(mut value: i32, output: &mut Vec<u8>) {
-    loop {
-        let byte = (value & 0x7F) as u8;
-        value >>= 7;
-        let done = (value == 0 && (byte & 0x40) == 0) || (value == -1 && (byte & 0x40) != 0);
-        output.push(if done { byte } else { byte | 0x80 });
-        if done {
-            break;
-        }
-    }
+pub fn write_sleb128_i32(value: i32, output: &mut Vec<u8>) {
+    Leb128::<i32>::encode(value, output);
 }
 
 /// 将无符号 `u32` 编码为 `ULEB128`（公开给段编码器复用）。
 #[inline]
 pub fn encode_uleb128(value: u32, output: &mut Vec<u8>) {
-    write_uleb128(value, output);
+    Leb128::<u32>::encode(value, output);
 }
 
 /// 将有符号 `i64` 编码为 `SLEB128`。
 #[inline]
 pub fn encode_sleb128_i64(value: i64, output: &mut Vec<u8>) {
-    write_sleb128_i64(value, output);
+    Leb128::<i64>::encode(value, output);
 }
 
 /// 编码局部变量声明组：`count` 个 `i32`。
 pub fn encode_local_i32_decl(count: u32, output: &mut Vec<u8>) {
-    write_uleb128(count, output);
+    Leb128::<u32>::encode(count, output);
     WasmValueType::I32.write(output);
 }
 
 /// 编码局部变量声明组：`count` 个指定值类型。
 pub fn encode_local_decl(count: u32, valtype: &WasmValueType, output: &mut Vec<u8>) {
-    write_uleb128(count, output);
+    Leb128::<u32>::encode(count, output);
     valtype.write(output);
 }
 
@@ -105,7 +98,7 @@ pub fn encode_i32_const(value: i32, output: &mut Vec<u8>) {
 /// `i64.const`
 pub fn encode_i64_const(value: i64, output: &mut Vec<u8>) {
     WasmOpcode::I64Const.encode(output);
-    write_sleb128_i64(value, output);
+    Leb128::<i64>::encode(value, output);
 }
 
 /// `f64.const`
@@ -116,8 +109,8 @@ pub fn encode_f64_const(value: f64, output: &mut Vec<u8>) {
 
 /// 内存参数：`align` + `offset`（不含操作码）。
 pub fn encode_memarg_immediates(align: u32, offset: u32, output: &mut Vec<u8>) {
-    write_uleb128(align, output);
-    write_uleb128(offset, output);
+    Leb128::<u32>::encode(align, output);
+    Leb128::<u32>::encode(offset, output);
 }
 
 /// 带操作码的 memarg 指令。
@@ -164,44 +157,44 @@ pub fn encode_f64_store(align: u32, offset: u32, output: &mut Vec<u8>) {
 /// `local.get`
 pub fn encode_local_get(index: u32, output: &mut Vec<u8>) {
     WasmOpcode::LocalGet.encode(output);
-    write_uleb128(index, output);
+    Leb128::<u32>::encode(index, output);
 }
 
 /// `local.set`
 pub fn encode_local_set(index: u32, output: &mut Vec<u8>) {
     WasmOpcode::LocalSet.encode(output);
-    write_uleb128(index, output);
+    Leb128::<u32>::encode(index, output);
 }
 
 /// `local.tee`
 pub fn encode_local_tee(index: u32, output: &mut Vec<u8>) {
     WasmOpcode::LocalTee.encode(output);
-    write_uleb128(index, output);
+    Leb128::<u32>::encode(index, output);
 }
 
 /// `global.get`
 pub fn encode_global_get(index: u32, output: &mut Vec<u8>) {
     WasmOpcode::GlobalGet.encode(output);
-    write_uleb128(index, output);
+    Leb128::<u32>::encode(index, output);
 }
 
 /// `global.set`
 pub fn encode_global_set(index: u32, output: &mut Vec<u8>) {
     WasmOpcode::GlobalSet.encode(output);
-    write_uleb128(index, output);
+    Leb128::<u32>::encode(index, output);
 }
 
 /// `call`
 pub fn encode_call(function_index: u32, output: &mut Vec<u8>) {
     WasmOpcode::Call.encode(output);
-    write_uleb128(function_index, output);
+    Leb128::<u32>::encode(function_index, output);
 }
 
 /// `call_indirect`
 pub fn encode_call_indirect(type_idx: u32, table_idx: u32, output: &mut Vec<u8>) {
     WasmOpcode::CallIndirect.encode(output);
-    write_uleb128(type_idx, output);
-    write_uleb128(table_idx, output);
+    Leb128::<u32>::encode(type_idx, output);
+    Leb128::<u32>::encode(table_idx, output);
 }
 
 /// `drop`
@@ -252,13 +245,13 @@ pub fn encode_i32_and(output: &mut Vec<u8>) {
 /// `br`
 pub fn encode_br(depth: u32, output: &mut Vec<u8>) {
     WasmOpcode::Br.encode(output);
-    write_uleb128(depth, output);
+    Leb128::<u32>::encode(depth, output);
 }
 
 /// `br_if`
 pub fn encode_br_if(depth: u32, output: &mut Vec<u8>) {
     WasmOpcode::BrIf.encode(output);
-    write_uleb128(depth, output);
+    Leb128::<u32>::encode(depth, output);
 }
 
 /// `block` + 空块类型。
@@ -308,26 +301,26 @@ pub fn encode_ref_is_null(output: &mut Vec<u8>) {
 /// `memory.size`（memory index 0）。
 pub fn encode_memory_size(output: &mut Vec<u8>) {
     WasmOpcode::MemorySize.encode(output);
-    write_uleb128(0, output);
+    Leb128::<u32>::encode(0, output);
 }
 
 /// `memory.grow`（memory index 0）。
 pub fn encode_memory_grow(output: &mut Vec<u8>) {
     WasmOpcode::MemoryGrow.encode(output);
-    write_uleb128(0, output);
+    Leb128::<u32>::encode(0, output);
 }
 
 /// `memory.copy`：`0xFC 0x0A` + 两个 memory index（默认均为 0）。
 pub fn encode_memory_copy(output: &mut Vec<u8>) {
     WasmMiscOpcode::MemoryCopy.encode(output);
-    write_uleb128(0, output);
-    write_uleb128(0, output);
+    Leb128::<u32>::encode(0, output);
+    Leb128::<u32>::encode(0, output);
 }
 
 /// `memory.fill`：`0xFC 0x0B` + memory index 0。
 pub fn encode_memory_fill(output: &mut Vec<u8>) {
     WasmMiscOpcode::MemoryFill.encode(output);
-    write_uleb128(0, output);
+    Leb128::<u32>::encode(0, output);
 }
 
 /// GC 前缀指令：仅前缀 + 子操作码。
@@ -338,53 +331,53 @@ pub fn encode_gc_op(op: WasmGcOpcode, output: &mut Vec<u8>) {
 /// `struct.new_default` + type index。
 pub fn encode_struct_new_default(type_index: u32, output: &mut Vec<u8>) {
     WasmGcOpcode::StructNewDefault.encode(output);
-    write_uleb128(type_index, output);
+    Leb128::<u32>::encode(type_index, output);
 }
 
 /// `struct.get` + type index + field index。
 pub fn encode_struct_get(type_index: u32, field_index: u32, output: &mut Vec<u8>) {
     WasmGcOpcode::StructGet.encode(output);
-    write_uleb128(type_index, output);
-    write_uleb128(field_index, output);
+    Leb128::<u32>::encode(type_index, output);
+    Leb128::<u32>::encode(field_index, output);
 }
 
 /// `struct.set` + type index + field index。
 pub fn encode_struct_set(type_index: u32, field_index: u32, output: &mut Vec<u8>) {
     WasmGcOpcode::StructSet.encode(output);
-    write_uleb128(type_index, output);
-    write_uleb128(field_index, output);
+    Leb128::<u32>::encode(type_index, output);
+    Leb128::<u32>::encode(field_index, output);
 }
 
 /// `array.new_default` + type index。
 pub fn encode_array_new_default(type_index: u32, output: &mut Vec<u8>) {
     WasmGcOpcode::ArrayNewDefault.encode(output);
-    write_uleb128(type_index, output);
+    Leb128::<u32>::encode(type_index, output);
 }
 
 /// `array.new_fixed` + type index + count。
 pub fn encode_array_new_fixed(type_index: u32, count: u32, output: &mut Vec<u8>) {
     WasmGcOpcode::ArrayNewFixed.encode(output);
-    write_uleb128(type_index, output);
-    write_uleb128(count, output);
+    Leb128::<u32>::encode(type_index, output);
+    Leb128::<u32>::encode(count, output);
 }
 
 /// `array.get` + type index。
 pub fn encode_array_get(type_index: u32, output: &mut Vec<u8>) {
     WasmGcOpcode::ArrayGet.encode(output);
-    write_uleb128(type_index, output);
+    Leb128::<u32>::encode(type_index, output);
 }
 
 /// `array.set` + type index。
 pub fn encode_array_set(type_index: u32, output: &mut Vec<u8>) {
     WasmGcOpcode::ArraySet.encode(output);
-    write_uleb128(type_index, output);
+    Leb128::<u32>::encode(type_index, output);
 }
 
 /// `array.copy` + destination/source type indices.
 pub fn encode_array_copy(dst_type: u32, src_type: u32, output: &mut Vec<u8>) {
     WasmGcOpcode::ArrayCopy.encode(output);
-    write_uleb128(dst_type, output);
-    write_uleb128(src_type, output);
+    Leb128::<u32>::encode(dst_type, output);
+    Leb128::<u32>::encode(src_type, output);
 }
 
 /// `array.len`
@@ -410,11 +403,11 @@ pub fn encode_ref_cast_array(output: &mut Vec<u8>) {
 /// 编码 `functype`：`0x60` + params + results。
 pub fn encode_functype(params: &[WasmValueType], results: &[WasmValueType]) -> Vec<u8> {
     let mut bytes = vec![TYPE_FORM_FUNC];
-    write_uleb128(u32::try_from(params.len()).unwrap_or(0), &mut bytes);
+    Leb128::<u32>::encode(u32::try_from(params.len()).unwrap_or(0), &mut bytes);
     for ty in params {
         ty.write(&mut bytes);
     }
-    write_uleb128(u32::try_from(results.len()).unwrap_or(0), &mut bytes);
+    Leb128::<u32>::encode(u32::try_from(results.len()).unwrap_or(0), &mut bytes);
     for ty in results {
         ty.write(&mut bytes);
     }
@@ -424,9 +417,9 @@ pub fn encode_functype(params: &[WasmValueType], results: &[WasmValueType]) -> V
 /// 编码 `functype`，参数/结果已是编码好的 valtype 字节序列。
 pub fn encode_functype_raw(params: &[u8], results: &[u8]) -> Vec<u8> {
     let mut bytes = vec![TYPE_FORM_FUNC];
-    write_uleb128(u32::try_from(params.len()).unwrap_or(0), &mut bytes);
+    Leb128::<u32>::encode(u32::try_from(params.len()).unwrap_or(0), &mut bytes);
     bytes.extend_from_slice(params);
-    write_uleb128(u32::try_from(results.len()).unwrap_or(0), &mut bytes);
+    Leb128::<u32>::encode(u32::try_from(results.len()).unwrap_or(0), &mut bytes);
     bytes.extend_from_slice(results);
     bytes
 }
@@ -434,7 +427,7 @@ pub fn encode_functype_raw(params: &[u8], results: &[u8]) -> Vec<u8> {
 /// 编码 `structtype`：全部字段默认可变。
 pub fn encode_structtype(field_types: &[WasmValueType]) -> Vec<u8> {
     let mut bytes = vec![TYPE_FORM_STRUCT];
-    write_uleb128(u32::try_from(field_types.len()).unwrap_or(0), &mut bytes);
+    Leb128::<u32>::encode(u32::try_from(field_types.len()).unwrap_or(0), &mut bytes);
     for field_type in field_types {
         field_type.write(&mut bytes);
         bytes.push(FIELD_MUTABLE);
@@ -445,7 +438,7 @@ pub fn encode_structtype(field_types: &[WasmValueType]) -> Vec<u8> {
 /// 编码 `structtype`，字段已是编码好的 valtype 字节。
 pub fn encode_structtype_raw(field_types: &[u8]) -> Vec<u8> {
     let mut bytes = vec![TYPE_FORM_STRUCT];
-    write_uleb128(u32::try_from(field_types.len()).unwrap_or(0), &mut bytes);
+    Leb128::<u32>::encode(u32::try_from(field_types.len()).unwrap_or(0), &mut bytes);
     for &field_type in field_types {
         bytes.push(field_type);
         bytes.push(FIELD_MUTABLE);

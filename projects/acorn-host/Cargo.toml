@@ -1,0 +1,12 @@
+[package]
+name = "acorn-host"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Minimal host executable wrappers per platform (Acorn domain)"
+repository = "https://github.com/yggdrasil-language/acorn.rs"
+
+[dependencies]
+acorn-mach-o = { path = "../../examples/acorn-mach-o" }
+acorn-x64 = { path = "../../examples/acorn-x64" }

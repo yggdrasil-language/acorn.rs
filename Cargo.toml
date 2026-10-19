@@ -4,14 +4,17 @@ members = ["projects/*", "examples/*"]
 default-members = [
     "projects/acorn-core",
     "projects/acorn-source",
+    "projects/acorn-codec",
+    "projects/acorn",
     "projects/acorn-probe",
+    "examples/acorn-gzip",
+    "examples/acorn-zlib",
     "examples/acorn-zip",
     "examples/acorn-docx",
     "examples/acorn-epub",
 ]
 exclude = [
     "projects/.DS_Store",
-    "projects/syntax-error",
 ]
 
 [workspace.package]
@@ -24,12 +27,15 @@ repository = "https://github.com/yggdrasil-language/acorn.rs"
 
 [workspace.dependencies]
 serde = { version = "1.0.228", features = ["derive"] }
-flate2 = { version = "1.1.5", default-features = false, features = ["rust_backend"] }
 diagnostic = { git = "https://github.com/oovm/rust-boost", branch = "dev", default-features = false, features = ["std", "serde"] }
 
 acorn-core = { path = "projects/acorn-core" }
 acorn-source = { path = "projects/acorn-source" }
+acorn-codec = { path = "projects/acorn-codec" }
+acorn = { path = "projects/acorn" }
 acorn-probe = { path = "projects/acorn-probe" }
+acorn-gzip = { path = "examples/acorn-gzip" }
+acorn-zlib = { path = "examples/acorn-zlib" }
 acorn-zip = { path = "examples/acorn-zip" }
 acorn-cfb = { path = "examples/acorn-cfb" }
 acorn-doc = { path = "examples/acorn-doc" }

@@ -1,19 +1,13 @@
 #[path = "common/mod.rs"]
 mod common;
 
-use acorn_core::ParseBudget;
+use acorn_core::Budget;
 use acorn_source::MemorySource;
 use acorn_zip::{COMPRESSION_DEFLATE, decode_member_with_facts, index_zip_bytes, read_member_payload};
 
-use common::minimal_single_file_zip;
-use flate2::{Compression, write::DeflateEncoder};
-use std::io::Write;
+use acorn_codec::compression::deflate::encode_stored;
 
-fn raw_deflate(data: &[u8]) -> Vec<u8> {
-    let mut encoder = DeflateEncoder::new(Vec::new(), Compression::default());
-    encoder.write_all(data).expect("compress");
-    encoder.finish().expect("finish deflate")
-}
+use common::minimal_single_file_zip;
 
 fn deflate_zip(name: &[u8], payload: &[u8], compressed: &[u8]) -> Vec<u8> {
     let crc = crc32(payload);
@@ -70,7 +64,7 @@ fn crc32(data: &[u8]) -> u32 {
 
 fn minimal_deflated_zip() -> Vec<u8> {
     let payload = b"xy";
-    deflate_zip(b"b", payload, &raw_deflate(payload))
+    deflate_zip(b"b", payload, &encode_stored(payload))
 }
 
 #[test]
@@ -80,7 +74,7 @@ fn decodes_deflated_member_payload() {
     let member = &index.members[0];
     assert_eq!(member.compression_method, COMPRESSION_DEFLATE);
     let source = MemorySource::from_bytes("deflate.zip", bytes);
-    let decoded = read_member_payload(source, member, &ParseBudget::default()).expect("decode");
+    let decoded = read_member_payload(source, member, &Budget::default()).expect("decode");
     assert_eq!(decoded, b"xy");
 }
 
@@ -90,7 +84,7 @@ fn stored_decode_matches_read_stored_payload() {
     let index = index_zip_bytes("stored.zip", bytes.clone()).expect("index");
     let member = &index.members[0];
     let source = MemorySource::from_bytes("stored.zip", bytes);
-    let decoded = read_member_payload(source, member, &ParseBudget::default()).expect("decode");
+    let decoded = read_member_payload(source, member, &Budget::default()).expect("decode");
     assert_eq!(decoded, b"x");
 }
 
@@ -100,7 +94,7 @@ fn decode_facts_report_crc_and_full_consumption() {
     let index = index_zip_bytes("deflate.zip", bytes.clone()).expect("index");
     let member = &index.members[0];
     let source = MemorySource::from_bytes("deflate.zip", bytes);
-    let (_decoded, facts) = decode_member_with_facts("m", source, member, &ParseBudget::default()).expect("facts");
+    let (_decoded, facts) = decode_member_with_facts("m", source, member, &Budget::default()).expect("facts");
     assert!(facts.fully_consumed);
     assert_eq!(facts.crc32_expected, facts.crc32_actual);
     assert!(facts.checksum_ok());

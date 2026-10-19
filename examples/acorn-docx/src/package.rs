@@ -1,4 +1,4 @@
-use acorn_core::ParseBudget;
+use acorn_core::Budget;
 use acorn_source::{ByteSource, MemorySource};
 use acorn_zip::{ZipArchiveIndex, ZipIndexError, ZipMember, ZipViewError, index_zip_bytes, read_member_payload};
 
@@ -75,7 +75,7 @@ impl OpcPackage {
     }
 
     /// Reads and decodes a package part into memory.
-    pub fn read_part(&self, path: &str, budget: &ParseBudget) -> Result<Vec<u8>, OpcError> {
+    pub fn read_part(&self, path: &str, budget: &Budget) -> Result<Vec<u8>, OpcError> {
         let normalized = normalize_part_path(path);
         let member = self.part(&normalized).ok_or_else(|| OpcError::PartNotFound(normalized))?;
         read_member_payload(self.source.clone(), member, budget).map_err(OpcError::from)

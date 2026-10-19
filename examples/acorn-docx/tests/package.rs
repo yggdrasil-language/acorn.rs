@@ -1,4 +1,4 @@
-use acorn_core::ParseBudget;
+use acorn_core::Budget;
 use acorn_docx::OpcPackage;
 
 fn stored_zip(path: &str, payload: &[u8]) -> Vec<u8> {
@@ -62,7 +62,7 @@ fn minimal_docx_zip() -> Vec<u8> {
 fn opens_zip_and_reads_part_by_path() {
     let pkg = OpcPackage::open("docx.zip", minimal_docx_zip()).expect("open");
     assert!(pkg.part("word/document.xml").is_some());
-    let xml = pkg.read_part("word/document.xml", &ParseBudget::default()).expect("read");
+    let xml = pkg.read_part("word/document.xml", &Budget::default()).expect("read");
     assert_eq!(xml, b"<w:document/>");
 }
 
@@ -78,17 +78,12 @@ fn reads_deflated_part_through_opc_package() {
     let compressed = raw_deflate(payload);
     let zip = deflate_zip("word/document.xml", payload, &compressed);
     let pkg = OpcPackage::open("deflate.docx", zip).expect("open");
-    let xml = pkg.read_part("word/document.xml", &ParseBudget::default()).expect("read");
+    let xml = pkg.read_part("word/document.xml", &Budget::default()).expect("read");
     assert_eq!(xml, payload);
 }
 
 fn raw_deflate(data: &[u8]) -> Vec<u8> {
-    use flate2::{Compression, write::DeflateEncoder};
-    use std::io::Write;
-
-    let mut encoder = DeflateEncoder::new(Vec::new(), Compression::default());
-    encoder.write_all(data).expect("compress");
-    encoder.finish().expect("finish deflate")
+    acorn_codec::compression::deflate::encode_stored(data)
 }
 
 fn deflate_zip(path: &str, payload: &[u8], compressed: &[u8]) -> Vec<u8> {
