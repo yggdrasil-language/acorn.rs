@@ -11,12 +11,12 @@ categories = ["parsing"]
 keywords = ["binary", "parser", "layout"]
 
 [dependencies]
-diagnostic = { workspace = true, default-features = false, features = ["std", "serde"] }
+boost-diagnostic = { workspace = true, default-features = false, features = ["std", "serde"] }
 serde = { workspace = true, optional = true }
 
 [features]
 default = []
-serde = ["dep:serde", "diagnostic/serde"]
+serde = ["dep:serde", "boost-diagnostic/serde"]
 
 [package.metadata.docs.rs]
 all-features = true

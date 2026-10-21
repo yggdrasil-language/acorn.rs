@@ -1,9 +1,9 @@
-//! Acorn domain diagnostic codes and builders on top of `diagnostic`.
+//! Acorn domain diagnostic codes and builders on top of `boost-diagnostic`.
 //!
 //! Stable `acorn.*` codes, budget usage, and conversion helpers. Rendering and
-//! collection use the shared `diagnostic` crate.
+//! collection use the shared `boost-diagnostic` crate.
 
-pub use diagnostic::{
+pub use boost_diagnostic::{
     Diagnostic, DiagnosticAction, DiagnosticCode as WireDiagnosticCode, DiagnosticLabel, DiagnosticLocation, DiagnosticOrigin,
     DiagnosticSet, DiagnosticSeverity, DiagnosticSink, Message, MessageArg,
 };
