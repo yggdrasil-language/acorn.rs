@@ -25,8 +25,7 @@ repository = "https://github.com/yggdrasil-language/acorn.rs"
 
 [workspace.dependencies]
 serde = { version = "1.0.228", features = ["derive"] }
-# Overlaid by local path `.cargo/config.toml` (git ignored).
-boost-diagnostic = { git = "https://github.com/oovm/rust-boost", rev = "2218a644af335aa4cef9f3e9e6b37475a829cfe2", default-features = false, features = ["std", "serde"] }
+boost-diagnostic = { path = "../rust-boost/projects/boost-diagnostic", default-features = false, features = ["std", "serde"] }
 
 acorn-core = { path = "projects/acorn-core" }
 acorn-source = { path = "projects/acorn-source" }
@@ -42,8 +41,8 @@ acorn-wasm = { path = "examples/acorn-wasm" }
 acorn-jvm = { path = "examples/acorn-jvm" }
 acorn-pe = { path = "examples/acorn-pe" }
 
-oak-core = { git = "https://github.com/yggdrasil-language/oak.rs.git", rev = "5ad929047783b8750191b3d8dc25a94bd88681e4", default-features = false, features = ["serde"] }
-oak-xml = { git = "https://github.com/yggdrasil-language/oak.rs.git", rev = "5ad929047783b8750191b3d8dc25a94bd88681e4", default-features = false, features = ["serde"] }
+oak-core = { path = "../oaks/projects/oak-core", default-features = false, features = ["serde"] }
+oak-xml = { path = "../oaks/examples/oak-xml", default-features = false, features = ["serde"] }
 
 [profile.release]
 lto = true
