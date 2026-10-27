@@ -22,7 +22,7 @@ pub mod post;
 
 pub use cff::{CffIndex, CffInfo, parse_cff_header};
 pub use cff2::{Cff2Info, parse_cff2_header};
-pub use cmap::{CmapSubtable, CmapTable, EncodingRecord};
+pub use cmap::{CmapSubtable, CmapSubtableData, CmapTable, EncodingRecord};
 pub use glyf::{CompositeGlyphFlags, GlyphOutline, SimpleGlyphFlags};
 pub use head::{HeadTable, MacStyle};
 pub use hhea::HheaTable;
