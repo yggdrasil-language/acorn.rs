@@ -533,8 +533,12 @@ pub struct MathGlyphInfo {
     pub extended_shapes: Vec<u16>,
     /// Kern data for the top-right corner per covered glyph.
     pub math_kern_top_right: HashMap<u16, MathKernTable>,
+    /// Kern data for the top-left corner per covered glyph.
+    pub math_kern_top_left: HashMap<u16, MathKernTable>,
     /// Kern data for the bottom-right corner per covered glyph.
     pub math_kern_bottom_right: HashMap<u16, MathKernTable>,
+    /// Kern data for the bottom-left corner per covered glyph.
+    pub math_kern_bottom_left: HashMap<u16, MathKernTable>,
 }
 
 impl MathGlyphInfo {
@@ -591,8 +595,8 @@ impl MathGlyphInfo {
 
         // MathKernInfo: Coverage + count + four Offset16 per glyph in
         // top-right, top-left, bottom-right, bottom-left order. All offsets are
-        // relative to the MathKernInfo start. Only the two right corners are
-        // exposed here.
+        // relative to the MathKernInfo start. A zero offset means that corner
+        // has no kern data for that glyph.
         if let Some(mut sub) = subtable(data, base, kern_info_off, "MathKernInfo")? {
             let sub_base = sub.position();
             let coverage_off = sub.read_u16()? as usize;
@@ -606,26 +610,48 @@ impl MathGlyphInfo {
             }
             for glyph_id in glyphs {
                 let top_right = sub.read_u16()? as usize;
-                let _top_left = sub.read_u16()? as usize;
+                let top_left = sub.read_u16()? as usize;
                 let bottom_right = sub.read_u16()? as usize;
-                let _bottom_left = sub.read_u16()? as usize;
-                if top_right != 0 {
-                    info.math_kern_top_right.insert(
-                        glyph_id,
-                        MathKernTable::parse_from(data, sub_base, top_right, "MathKernTopRight")?,
-                    );
-                }
-                if bottom_right != 0 {
-                    info.math_kern_bottom_right.insert(
-                        glyph_id,
-                        MathKernTable::parse_from(data, sub_base, bottom_right, "MathKernBottomRight")?,
-                    );
-                }
+                let bottom_left = sub.read_u16()? as usize;
+                insert_kern(&mut info.math_kern_top_right, data, sub_base, top_right, glyph_id, "MathKernTopRight")?;
+                insert_kern(&mut info.math_kern_top_left, data, sub_base, top_left, glyph_id, "MathKernTopLeft")?;
+                insert_kern(
+                    &mut info.math_kern_bottom_right,
+                    data,
+                    sub_base,
+                    bottom_right,
+                    glyph_id,
+                    "MathKernBottomRight",
+                )?;
+                insert_kern(
+                    &mut info.math_kern_bottom_left,
+                    data,
+                    sub_base,
+                    bottom_left,
+                    glyph_id,
+                    "MathKernBottomLeft",
+                )?;
             }
         }
 
         Ok(info)
     }
+}
+
+/// Parse one corner `MathKern` at `base + offset` and store it under
+/// `glyph_id`. A zero offset means the font has no kern data for that corner.
+fn insert_kern(
+    map: &mut HashMap<u16, MathKernTable>,
+    data: &[u8],
+    base: usize,
+    offset: usize,
+    glyph_id: u16,
+    what: &'static str,
+) -> Result<(), ParseMathError> {
+    if offset != 0 {
+        map.insert(glyph_id, MathKernTable::parse_from(data, base, offset, what)?);
+    }
+    Ok(())
 }
 
 // ---- MathVariants ----
