@@ -4,7 +4,7 @@
 //! against the full public API of `acorn-ttf`. The font is loaded via an
 //! absolute path — if the file moves, adjust `LMM_PATH` below.
 
-use acorn_ttf::{font::FontFace, license::LicenseKind, sfnt};
+use acorn_ttf::{font::FontFace, license::LicenseKind, sfnt, tables::PartRecord};
 
 const LMM_PATH: &str = r#"E:\dxo 深度学习\VuTeX\projects\crates\vutex-text\assets\LatinModernMath-Regular.otf"#;
 
@@ -75,30 +75,46 @@ fn smoke_lmm_math_constants() {
 fn smoke_lmm_math_glyph_info() {
     let mut face = load_lmm();
     let math = face.math().expect("MATH");
-    // LMM exposes italic correction for a large number of glyphs.
-    assert!(!math.glyph_info.italic_correction.is_empty(), "LMM should have italic corrections");
-    assert!(!math.glyph_info.accent_attachment.is_empty(), "LMM should have accent attachments");
+    let info = &math.glyph_info;
+    // Counts and values below come from fontTools on LatinModernMath-Regular.otf.
+    assert_eq!(info.italic_correction.len(), 1002, "LMM italic correction count");
+    assert_eq!(info.italic_correction.get(&24), Some(&13.0), "glyph 24 italic correction");
+    assert_eq!(info.top_accent_attachment.len(), 2475, "LMM top accent count");
+    assert_eq!(info.top_accent_attachment.get(&11), Some(&398.0), "glyph 11 accent attachment");
+    assert_eq!(info.extended_shapes.len(), 250, "LMM extended shape count");
+    assert_eq!(info.extended_shapes.first(), Some(&1869), "first extended shape glyph");
+    // Latin Modern Math carries no MathKernInfo subtable.
+    assert!(info.math_kern_top_right.is_empty());
+    assert!(info.math_kern_bottom_right.is_empty());
 }
 
 #[test]
 fn smoke_lmm_math_variants() {
     let mut face = load_lmm();
     let math = face.math().expect("MATH");
-    assert!(!math.variants.vert_tables.is_empty(), "LMM should have vertical constructions");
-    assert!(!math.variants.horiz_tables.is_empty(), "LMM should have horizontal constructions");
-}
+    let variants = &math.variants;
+    assert_eq!(variants.min_connector_overlap, 20.0);
+    assert_eq!(variants.vert_coverages.len(), 94);
+    assert_eq!(variants.horiz_coverages.len(), 86);
+    assert_eq!(variants.vert_constructions.len(), 94);
+    assert_eq!(variants.horiz_constructions.len(), 86);
 
-#[test]
-fn smoke_lmm_math_assembly() {
-    let mut face = load_lmm();
-    let math = face.math().expect("MATH");
-    // LMM MATH v1 has assembly_off=0x0046 which overlaps MathConstants — a
-    // known-invalid offset so the parser treats it as missing. We tolerate
-    // the absence here because MATH v1 without a usable assembly is valid.
-    if let Some(asm) = &math.assembly {
-        assert!(!asm.vert_tables.is_empty() || !asm.horiz_tables.is_empty());
-    }
-    // If assembly is None that is also correct for this font.
+    // Glyph 9 (`parenleft`) carries the canonical eight-step ladder plus a
+    // three-part assembly whose middle part is the extender.
+    let paren = variants.vert_constructions.get(&9).expect("vertical construction for glyph 9");
+    assert_eq!(paren.glyph_id, 9);
+    assert_eq!(paren.variants.len(), 8);
+    assert_eq!(paren.variants[0].variant_glyph, 9);
+    assert_eq!(paren.variants[0].advance_measurement, 997.0);
+    assert_eq!(paren.variants[7].advance_measurement, 2991.0);
+
+    let assembly = paren.assembly.as_ref().expect("glyph 9 assembly");
+    assert_eq!(assembly.italics_correction, 0.0);
+    assert_eq!(assembly.parts.len(), 3);
+    assert_eq!(assembly.parts[1].glyph_id, 2504);
+    assert_eq!(assembly.parts[1].start_connector_length, 498.0);
+    assert_eq!(assembly.parts[1].full_advance, 498.0);
+    assert_eq!(assembly.parts[1].part_flags & PartRecord::EXTENDER, PartRecord::EXTENDER);
 }
 
 #[test]

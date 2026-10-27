@@ -28,7 +28,10 @@ pub use head::{HeadTable, MacStyle};
 pub use hhea::HheaTable;
 pub use hmtx::{HmtxTable, LongHorMetric};
 pub use loca::{LocaFormat, parse_loca};
-pub use math::{MathAssembly, MathConstants, MathGlyphInfo, MathTable, MathVariants, PartRecord};
+pub use math::{
+    GlyphAssembly, MathConstants, MathGlyphConstruction, MathGlyphInfo, MathKernTable, MathTable, MathVariantRecord,
+    MathVariants, PartRecord,
+};
 pub use maxp::MaxpTable;
 pub use name::{NameId, NameRecord, NameTable};
 pub use os2::Os2Table;
