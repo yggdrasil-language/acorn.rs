@@ -16,7 +16,7 @@ use acorn_ttf::{
     sfnt::parse_font_validated,
     tables::{
         glyf::parse_glyph,
-        math::{MathConstants, MathGlyphConstruction, MathKernTable, MathTable, ParseMathError},
+        math::{MathConstants, MathGlyphConstruction, MathGlyphInfo, MathKernTable, MathTable, ParseMathError},
     },
 };
 use std::collections::HashMap;
@@ -79,13 +79,43 @@ fn diff_extended_shapes(ours: &[u16], theirs: Option<Coverage<'_>>, num_glyphs: 
     assert_eq!(ours, expected.as_slice(), "extended shapes differ from ttf-parser");
 }
 
-fn diff_kern_side(
-    ours: &HashMap<u16, MathKernTable>,
+/// One of the four `MathKernInfoRecord` corners.
+#[derive(Clone, Copy, Debug)]
+enum Corner {
+    TopRight,
+    TopLeft,
+    BottomRight,
+    BottomLeft,
+}
+
+impl Corner {
+    fn ours(self, info: &MathGlyphInfo) -> &HashMap<u16, MathKernTable> {
+        match self {
+            Self::TopRight => &info.math_kern_top_right,
+            Self::TopLeft => &info.math_kern_top_left,
+            Self::BottomRight => &info.math_kern_bottom_right,
+            Self::BottomLeft => &info.math_kern_bottom_left,
+        }
+    }
+
+    fn theirs<'a>(self, info: &ttf_parser::math::KernInfo<'a>) -> Option<ttf_parser::math::Kern<'a>> {
+        match self {
+            Self::TopRight => info.top_right.clone(),
+            Self::TopLeft => info.top_left.clone(),
+            Self::BottomRight => info.bottom_right.clone(),
+            Self::BottomLeft => info.bottom_left.clone(),
+        }
+    }
+}
+
+fn diff_kern_corner(
+    ours: &MathGlyphInfo,
     theirs: Option<ttf_parser::math::KernInfos<'_>>,
     num_glyphs: u16,
-    top: bool,
-    what: &str,
+    corner: Corner,
 ) {
+    let what = format!("{corner:?} kern");
+    let ours = corner.ours(ours);
     let mut seen = 0usize;
     if let Some(infos) = theirs {
         for glyph_id in 0..num_glyphs {
@@ -93,8 +123,7 @@ fn diff_kern_side(
             else {
                 continue;
             };
-            let kern = if top { info.top_right } else { info.bottom_right };
-            let Some(kern) = kern
+            let Some(kern) = corner.theirs(&info)
             else {
                 assert!(!ours.contains_key(&glyph_id), "{what}: glyph {glyph_id} has no kern in ttf-parser");
                 continue;
@@ -214,14 +243,9 @@ fn diff_font(data: &[u8], face_index: u32) {
         "top accent attachment",
     );
     diff_extended_shapes(&ours.glyph_info.extended_shapes, glyph_info.extended_shapes, num_glyphs);
-    diff_kern_side(&ours.glyph_info.math_kern_top_right, glyph_info.kern_infos, num_glyphs, true, "top-right kern");
-    diff_kern_side(
-        &ours.glyph_info.math_kern_bottom_right,
-        glyph_info.kern_infos,
-        num_glyphs,
-        false,
-        "bottom-right kern",
-    );
+    for corner in [Corner::TopRight, Corner::TopLeft, Corner::BottomRight, Corner::BottomLeft] {
+        diff_kern_corner(&ours.glyph_info, glyph_info.kern_infos, num_glyphs, corner);
+    }
 
     let variants = theirs.variants.expect("ttf-parser MathVariants");
     assert_eq!(
@@ -251,6 +275,23 @@ fn glyph_info_and_variants_match_ttf_parser_on_latin_modern_math() {
         return;
     };
     diff_font(&data, 0);
+
+    // Independent counts from fontTools 4.67.0 on the font whose SHA-256 is
+    // 6075562B771F8B82F0C179E363389684F2DD09DE30038269E2628E504BD7BE0F.
+    let math = acorn_math(&data, 0);
+    let info = &math.glyph_info;
+    assert_eq!(info.italic_correction.len(), 1002);
+    assert_eq!(info.top_accent_attachment.len(), 2475);
+    assert_eq!(info.extended_shapes.len(), 250);
+    // Latin Modern Math ships no `MathKernInfo` subtable at all, so every
+    // corner must stay empty even though the header offset parses.
+    assert!(info.math_kern_top_right.is_empty());
+    assert!(info.math_kern_top_left.is_empty());
+    assert!(info.math_kern_bottom_right.is_empty());
+    assert!(info.math_kern_bottom_left.is_empty());
+    assert_eq!(math.variants.min_connector_overlap, 20.0);
+    assert_eq!(math.variants.vert_coverages.len(), 94);
+    assert_eq!(math.variants.horiz_coverages.len(), 86);
 }
 
 #[test]
@@ -275,13 +316,22 @@ fn glyph_info_and_variants_match_ttf_parser_on_cambria_math() {
     // top-right `MathKern` and 261 a bottom-right one. fontTools reports the
     // same split: top-right 371, bottom-right 261, top-left 39, bottom-left 124.
     assert_eq!(info.math_kern_top_right.len(), 371);
+    assert_eq!(info.math_kern_top_left.len(), 39);
     assert_eq!(info.math_kern_bottom_right.len(), 261);
+    assert_eq!(info.math_kern_bottom_left.len(), 124);
     let kern = info.math_kern_top_right.get(&4).expect("top-right kern for glyph 4");
     assert_eq!(kern.correction_heights, vec![620.0]);
     assert_eq!(kern.kern_values, vec![0.0, -75.0]);
     let bottom = info.math_kern_bottom_right.get(&4).expect("bottom-right kern for glyph 4");
     assert!(bottom.correction_heights.is_empty());
     assert_eq!(bottom.kern_values, vec![40.0]);
+    // Left corners are populated by a different, smaller set of glyphs.
+    let top_left = info.math_kern_top_left.get(&1827).expect("top-left kern for glyph 1827");
+    assert_eq!(top_left.correction_heights, vec![616.0]);
+    assert_eq!(top_left.kern_values, vec![0.0, -140.0]);
+    let bottom_left = info.math_kern_bottom_left.get(&1775).expect("bottom-left kern for glyph 1775");
+    assert_eq!(bottom_left.correction_heights, vec![420.0]);
+    assert_eq!(bottom_left.kern_values, vec![65.0, 0.0]);
 
     let variants = &math.variants;
     assert_eq!(variants.min_connector_overlap, 200.0);
@@ -509,6 +559,77 @@ fn bounded_rejects_oversized_assembly() {
         Err(ParseMathError::LimitExceeded { what: "assembly parts", count: 60_000, max: 1024 }) => {}
         other => panic!("unexpected result: {other:?}"),
     }
+}
+
+#[test]
+fn bounded_rejects_truncated_kern_heights() {
+    // One `MathKernInfo` record whose top-right corner points at a `MathKern`
+    // claiming four correction heights but only carrying one.
+    let glyph_info = glyph_info_with_kern_corner(32);
+    let mut bytes = u16s(&[4u16]); // HeightCount
+    bytes.extend_from_slice(&500i16.to_be_bytes()); // CorrectionHeight[0]
+    bytes.extend_from_slice(&0u16.to_be_bytes()); // its device offset
+    let data = math_with_glyph_info(&glyph_info);
+    let mut payload = data;
+    payload.extend_from_slice(&bytes);
+    assert!(matches!(MathTable::parse(&payload), Err(ParseMathError::Bounds(_))));
+}
+
+#[test]
+fn bounded_rejects_oversized_kern_height_count() {
+    let glyph_info = glyph_info_with_kern_corner(32);
+    let data = math_with_glyph_info(&glyph_info);
+    let mut payload = data;
+    payload.extend_from_slice(&2000u16.to_be_bytes()); // HeightCount above the cap
+    match MathTable::parse(&payload) {
+        Err(ParseMathError::LimitExceeded { what: "kern heights", count: 2000, max: 1024 }) => {}
+        other => panic!("unexpected result: {other:?}"),
+    }
+}
+
+#[test]
+fn bounded_rejects_out_of_range_left_kern_offset() {
+    // The two left corners are parsed and validated, not silently ignored.
+    for corner in [1usize, 3] {
+        let mut glyph_info = glyph_info_with_kern_corner(0);
+        let mut list = Vec::with_capacity(glyph_info.len() / 2);
+        for chunk in glyph_info.chunks_exact(2) {
+            list.push(u16::from_be_bytes([chunk[0], chunk[1]]));
+        }
+        // Records start at u16 index 6: top-right, top-left, bottom-right,
+        // bottom-left.
+        list[6 + corner] = 0xFFFF;
+        glyph_info.clear();
+        glyph_info.extend_from_slice(&u16s(&list));
+        let data = math_with_glyph_info(&glyph_info);
+        assert!(
+            matches!(MathTable::parse(&data), Err(ParseMathError::Malformed(_))),
+            "corner {corner} must reject an offset past the table"
+        );
+    }
+}
+
+/// A `MathGlyphInfo` with one `MathKernInfo` record whose top-right corner is
+/// at `top_right` (relative to `MathKernInfo`) and whose coverage names glyph 3.
+///
+/// Records live at u16 indices 6..10, so the shared layout is fixed: the caller
+/// appends any kern subtable bytes right after this payload.
+fn glyph_info_with_kern_corner(top_right: u16) -> Vec<u8> {
+    u16s(&[
+        0, 0, 0, // no italics, top accent or extended shapes
+        8, // MathKernInfo at +8
+        20, // MathKernCoverage at +20 from MathKernInfo
+        1, // MathKernCount
+        top_right, // TopRightMathKern
+        0,         // TopLeftMathKern
+        0,         // BottomRightMathKern
+        0,         // BottomLeftMathKern
+        0, 0, 0, 0, // padding up to +28
+        1, // Coverage format 1
+        1, // one glyph
+        3, // glyph id 3
+        0, 0, 0, // padding up to +40
+    ])
 }
 
 #[test]
