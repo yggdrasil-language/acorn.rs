@@ -1,0 +1,32 @@
+[package]
+name = "acorn-ttf"
+version.workspace = true
+authors.workspace = true
+description = "SFNT font parser for Acorn — table directory standard tables MATH table TrueType glyf and OTF CFF outlines"
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository = "https://github.com/oovm/acorn.rs/tree/dev/projects/acorn-ttf"
+categories = ["parsing", "graphics"]
+keywords = ["font", "sfnt", "truetype", "opentype", "math"]
+
+[dependencies]
+acorn-core = { workspace = true }
+serde = { workspace = true, optional = true }
+
+[features]
+default = []
+serde = ["dep:serde", "acorn-core/serde"]
+diff-ttf-parser = ["dep:ttf-parser"]
+
+[dependencies.ttf-parser]
+version = "0.21"
+optional = true
+default-features = false
+features = ["opentype-layout", "apple-layout", "variable-fonts", "glyph-names"]
+
+[dev-dependencies]
+ttf-parser = "0.21"
+
+[package.metadata.docs.rs]
+all-features = true

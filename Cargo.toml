@@ -7,6 +7,7 @@ default-members = [
     "projects/acorn-codec",
     "projects/acorn",
     "projects/acorn-probe",
+    "projects/acorn-ttf",
     "examples/acorn-zip",
     "examples/acorn-docx",
     "examples/acorn-epub",
@@ -32,6 +33,7 @@ acorn-source = { path = "projects/acorn-source" }
 acorn-codec = { path = "projects/acorn-codec" }
 acorn = { path = "projects/acorn" }
 acorn-probe = { path = "projects/acorn-probe" }
+acorn-ttf = { path = "projects/acorn-ttf", default-features = false }
 acorn-zip = { path = "examples/acorn-zip" }
 acorn-cfb = { path = "examples/acorn-cfb" }
 acorn-doc = { path = "examples/acorn-doc" }
