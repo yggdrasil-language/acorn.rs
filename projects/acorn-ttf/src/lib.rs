@@ -15,11 +15,13 @@
 #![warn(missing_docs)]
 #![allow(dead_code)]
 
+pub mod outline;
 pub mod reader;
 pub mod sfnt;
 pub mod tables;
 
 // Top-level re-exports for the most common entry points.
+pub use outline::{BBox, OutlineBuilder};
 pub use reader::{ReadError, Reader, Tag};
 pub use sfnt::{
     ChecksumStatus, Face, FontContainer, OffsetTable, ParseError, TableDirectory, TableRecord, file_checksum, magic,
