@@ -3,8 +3,8 @@
 //! Spec: [MS-OTTO §3.1](https://learn.microsoft.com/en-us/typography/opentype/spec/math).
 //!
 //! This is the core deliverable for VuTeX formula layout. We parse:
-//! 1. `MathConstants` — all 33 numeric settings controlling super/subscript
-//!    placement, fractions, bars, radicals, delimiters.
+//! 1. `MathConstants` — the 56 numeric settings controlling super/subscript
+//!    placement, fractions, bars and radicals.
 //! 2. `MathGlyphInfo` — italic correction, accent attachment and math kern
 //!    records for every glyph that participates in math shaping.
 //! 3. `MathVariants` — horizontal and vertical constructions per delimiter
@@ -176,70 +176,57 @@ impl std::error::Error for ParseMathError {}
 
 // ---- Math Constants ----
 
-/// 56 standard math layout parameters from MS-OTTO §3.1 MathConstants.
+/// `MathConstants` — all 56 fields of MS-OTTO §3.1, in specification order.
 ///
-/// Layout in the font: 4 simple u16 fields followed by 51 MathValueRecords
-/// (each = FWORD value + uint16 deviceTableOffset) and a final UShort.
+/// Layout is fixed and positional, so one wrong field shifts every later
+/// value. The byte layout is:
+/// ```text
+///   4 simple fields                      8 bytes
+///  51 MathValueRecord fields           204 bytes  (FWORD value + uint16 device offset)
+///   1 uint16 RadicalDegreeBottomRaisePercent
+///                                      ----------
+///                                        214 bytes
+/// ```
+/// `ScriptPercentScaleDown` and `ScriptScriptPercentScaleDown` are `int16`,
+/// `DelimitedSubFormulaMinHeight` and `DisplayOperatorMinHeight` are `uint16`,
+/// `RadicalDegreeBottomRaisePercent` is `uint16`. All MathValueRecord values
+/// are `int16` in font units, widened to `f32` here for layout arithmetic.
 #[derive(Debug, Clone, PartialEq)]
 pub struct MathConstants {
-    /// ScriptPercentScaleDown (per-thousand, e.g. 700 = 0.7).
+    /// ScriptPercentScaleDown (percent, e.g. 70).
     pub script_percent_scale_down: f32,
-    /// ScriptScriptPercentScaleDown.
+    /// ScriptScriptPercentScaleDown (percent).
     pub script_script_percent_scale_down: f32,
-    /// DelimitedSubFormulaMinHeight.
+    /// DelimitedSubFormulaMinHeight (`uint16`, font units).
     pub delimited_sub_formula_min_height: f32,
-    /// DisplayOperatorMinHeight.
+    /// DisplayOperatorMinHeight (`uint16`, font units).
     pub display_operator_min_height: f32,
+
+    // --- 51 MathValueRecords, specification order ---
 
     pub math_leading: f32,
     pub axis_height: f32,
     pub accent_base_height: f32,
     pub flattened_accent_base_height: f32,
 
-    // Subscript
     pub subscript_shift_down: f32,
     pub subscript_top_max: f32,
     pub subscript_baseline_drop_min: f32,
 
-    // Superscript
     pub superscript_shift_up: f32,
     pub superscript_shift_up_cramped: f32,
     pub superscript_bottom_min: f32,
-    pub superscript_baseline_drop_max: f32, // renamed from SuperscriptTopMax per OTTO
-    pub superscript_top_max: f32,           // OTTO name: SuperscriptBottomMax
-    pub superscript_bottom_max: f32,
+    pub superscript_baseline_drop_max: f32,
 
-    // SubSuperscript gap constraints
     pub sub_superscript_gap_min: f32,
     pub superscript_bottom_max_with_subscript: f32,
-    pub superscript_bottom_min_with_subscript: f32,
-    pub subscript_top_max_with_superscript: f32,
+    pub space_after_script: f32,
 
-    // Fractions
-    pub fraction_numerator_shift_up: f32,
-    pub fraction_denominator_shift_down: f32,
-    pub fraction_numerator_gap_min: f32,
-    pub fraction_denominator_gap_min: f32,
-    pub fraction_delimiter_size: f32,
-    pub fraction_delimiter_display_style_size: f32,
-
-    // Overbar
-    pub overbar_vertical_gap: f32,
-    pub overbar_rule_thickness: f32,
-    pub overbar_extra_ascender: f32,
-
-    // Underbar
-    pub underbar_vertical_gap: f32,
-    pub underbar_rule_thickness: f32,
-    pub underbar_extra_descender: f32,
-
-    // Limits
     pub upper_limit_gap_min: f32,
     pub upper_limit_baseline_rise_min: f32,
     pub lower_limit_gap_min: f32,
     pub lower_limit_baseline_drop_min: f32,
 
-    // Stacking
     pub stack_top_shift_up: f32,
     pub stack_top_display_style_shift_up: f32,
     pub stack_bottom_shift_down: f32,
@@ -247,133 +234,134 @@ pub struct MathConstants {
     pub stack_gap_min: f32,
     pub stack_display_style_gap_min: f32,
 
-    // Stretch stack
     pub stretch_stack_top_shift_up: f32,
     pub stretch_stack_bottom_shift_down: f32,
     pub stretch_stack_gap_above_min: f32,
     pub stretch_stack_gap_below_min: f32,
 
-    // Skewed fractions
+    pub fraction_numerator_shift_up: f32,
+    pub fraction_numerator_display_style_shift_up: f32,
+    pub fraction_denominator_shift_down: f32,
+    pub fraction_denominator_display_style_shift_down: f32,
+    pub fraction_numerator_gap_min: f32,
+    pub fraction_num_display_style_gap_min: f32,
+    pub fraction_rule_thickness: f32,
+    pub fraction_denominator_gap_min: f32,
+    pub fraction_denom_display_style_gap_min: f32,
+
     pub skewed_fraction_horizontal_gap: f32,
     pub skewed_fraction_vertical_gap: f32,
 
-    pub space_after_script: f32,
+    pub overbar_vertical_gap: f32,
+    pub overbar_rule_thickness: f32,
+    pub overbar_extra_ascender: f32,
 
-    // Radical
-    pub radical_min_display_height: f32,
-    pub radical_gap_before: f32,
+    pub underbar_vertical_gap: f32,
+    pub underbar_rule_thickness: f32,
+    pub underbar_extra_descender: f32,
+
+    pub radical_vertical_gap: f32,
+    pub radical_display_style_vertical_gap: f32,
     pub radical_rule_thickness: f32,
     pub radical_extra_ascender: f32,
     pub radical_kern_before_degree: f32,
     pub radical_kern_after_degree: f32,
-    pub radical_degree_gap_min: f32,
-    pub radical_degree_rule_thickness: f32,
-    pub radical_display_style_vertical_gap: f32,
-    /// RadicalDegreeBottomRaisePercent (percent, not per-thousand).
+
+    /// RadicalDegreeBottomRaisePercent (`uint16`, percent).
     pub radical_degree_bottom_raise_percent: f32,
 }
 
 impl MathConstants {
-    /// Parse MathConstants from the MATH sub-table.
+    /// Byte length of one `MathConstants` record: 4 simple fields (8 bytes),
+    /// 51 MathValueRecords (204 bytes) and one `uint16` (2 bytes).
+    pub const BYTE_LEN: usize = 214;
+
+    /// Parse MathConstants from the start of the sub-table.
     ///
-    /// Layout (MS-OTTO §3.1, verified against LMM raw bytes + fontTools):
-    /// ```text
-    /// ScriptPercentScaleDown: Short       (signed u16, 2 bytes)
-    /// ScriptScriptPercentScaleDown: Short  (signed u16, 2 bytes)
-    /// DelimitedSubFormulaMinHeight: UShort (unsigned u16, 2 bytes)
-    /// DisplayOperatorMinHeight: UShort     (unsigned u16, 2 bytes)
-    /// --- 51 × MathValueRecord ---        (each 4 bytes: FWORD value + uint16 deviceTableOffset)
-    ///   MathLeading, AxisHeight, AccentBaseHeight, FlattenedAccentBaseHeight,
-    ///   SubscriptShiftDown, SubscriptTopMax, SubscriptBaselineDropMin,
-    ///   SuperscriptShiftUp, SuperscriptShiftUpCramped, SuperscriptBottomMin,
-    ///   SuperscriptBaselineDropMax, SuperscriptTopMax, SuperscriptBottomMax,
-    ///   SubSuperscriptGapMin, SuperscriptBottomMaxWithSubscript,
-    ///   SuperscriptBottomMinWithSubscript, SubscriptTopMaxWithSuperscript,
-    ///   FractionNumeratorShiftUp, FractionDenominatorShiftDown, ... (36 more)
-    /// --- RadicalDegreeBottomRaisePercent: UShort --- (2 bytes)
-    /// ```
+    /// The fields are read strictly in MS-OTTO §3.1 order (the same order they
+    /// are declared in [`MathConstants`]). MathValueRecords are 4 bytes each:
+    /// an `int16` value in font units followed by a `uint16` device-table
+    /// offset. The device offset is hinting metadata, not a font fact, so only
+    /// the value is kept.
     pub fn parse(r: &mut Reader<'_>) -> Result<Self, ParseMathError> {
-        fn mvr_value(r: &mut Reader<'_>) -> Result<f32, ReadError> {
-            let val = r.read_fword()?;
-            let _device_offset = r.read_u16()?; // skip DeviceTable offset (unused in font facts)
-            Ok(val)
+        fn mvr(r: &mut Reader<'_>) -> Result<f32, ReadError> {
+            let value = r.read_fword()?;
+            let _device_table_offset = r.read_u16()?;
+            Ok(value)
         }
 
         Ok(Self {
-            // --- 4 simple u16 fields ---
-            script_percent_scale_down: r.read_fword()?,         // Short (signed)
-            script_script_percent_scale_down: r.read_fword()?,  // Short (signed)
-            delimited_sub_formula_min_height: r.read_ufword()?, // UShort
-            display_operator_min_height: r.read_ufword()?,      // UShort
+            // --- 4 simple fields ---
+            script_percent_scale_down: r.read_i16()? as f32,
+            script_script_percent_scale_down: r.read_i16()? as f32,
+            delimited_sub_formula_min_height: r.read_ufword()?,
+            display_operator_min_height: r.read_ufword()?,
 
-            // --- 51 MathValueRecords (4 bytes each) ---
-            math_leading: mvr_value(r)?,
-            axis_height: mvr_value(r)?,
-            accent_base_height: mvr_value(r)?,
-            flattened_accent_base_height: mvr_value(r)?,
+            // --- 51 MathValueRecords ---
+            math_leading: mvr(r)?,
+            axis_height: mvr(r)?,
+            accent_base_height: mvr(r)?,
+            flattened_accent_base_height: mvr(r)?,
 
-            subscript_shift_down: mvr_value(r)?,
-            subscript_top_max: mvr_value(r)?,
-            subscript_baseline_drop_min: mvr_value(r)?,
+            subscript_shift_down: mvr(r)?,
+            subscript_top_max: mvr(r)?,
+            subscript_baseline_drop_min: mvr(r)?,
 
-            superscript_shift_up: mvr_value(r)?,
-            superscript_shift_up_cramped: mvr_value(r)?,
-            superscript_bottom_min: mvr_value(r)?,
-            superscript_baseline_drop_max: mvr_value(r)?, // SuperscriptTopMax
-            superscript_top_max: mvr_value(r)?,           // SuperscriptBottomMax (renamed)
-            superscript_bottom_max: mvr_value(r)?,
+            superscript_shift_up: mvr(r)?,
+            superscript_shift_up_cramped: mvr(r)?,
+            superscript_bottom_min: mvr(r)?,
+            superscript_baseline_drop_max: mvr(r)?,
 
-            sub_superscript_gap_min: mvr_value(r)?,
-            superscript_bottom_max_with_subscript: mvr_value(r)?,
-            superscript_bottom_min_with_subscript: mvr_value(r)?,
-            subscript_top_max_with_superscript: mvr_value(r)?,
+            sub_superscript_gap_min: mvr(r)?,
+            superscript_bottom_max_with_subscript: mvr(r)?,
+            space_after_script: mvr(r)?,
 
-            fraction_numerator_shift_up: mvr_value(r)?,
-            fraction_denominator_shift_down: mvr_value(r)?,
-            fraction_numerator_gap_min: mvr_value(r)?,
-            fraction_denominator_gap_min: mvr_value(r)?,
-            fraction_delimiter_size: mvr_value(r)?,
-            fraction_delimiter_display_style_size: mvr_value(r)?,
+            upper_limit_gap_min: mvr(r)?,
+            upper_limit_baseline_rise_min: mvr(r)?,
+            lower_limit_gap_min: mvr(r)?,
+            lower_limit_baseline_drop_min: mvr(r)?,
 
-            overbar_vertical_gap: mvr_value(r)?,
-            overbar_rule_thickness: mvr_value(r)?,
-            overbar_extra_ascender: mvr_value(r)?,
+            stack_top_shift_up: mvr(r)?,
+            stack_top_display_style_shift_up: mvr(r)?,
+            stack_bottom_shift_down: mvr(r)?,
+            stack_bottom_display_style_shift_down: mvr(r)?,
+            stack_gap_min: mvr(r)?,
+            stack_display_style_gap_min: mvr(r)?,
 
-            underbar_vertical_gap: mvr_value(r)?,
-            underbar_rule_thickness: mvr_value(r)?,
-            underbar_extra_descender: mvr_value(r)?,
+            stretch_stack_top_shift_up: mvr(r)?,
+            stretch_stack_bottom_shift_down: mvr(r)?,
+            stretch_stack_gap_above_min: mvr(r)?,
+            stretch_stack_gap_below_min: mvr(r)?,
 
-            // Stacking and limits
-            upper_limit_gap_min: mvr_value(r)?,           // UpperLimitGapMin
-            upper_limit_baseline_rise_min: mvr_value(r)?, // UpperLimitBaselineRiseMin
-            lower_limit_gap_min: mvr_value(r)?,           // LowerLimitGapMin
-            lower_limit_baseline_drop_min: mvr_value(r)?, // LowerLimitBaselineDropMin
-            stack_top_shift_up: mvr_value(r)?,
-            stack_top_display_style_shift_up: mvr_value(r)?,
-            stack_bottom_shift_down: mvr_value(r)?,
-            stack_bottom_display_style_shift_down: mvr_value(r)?,
-            stack_gap_min: mvr_value(r)?,
-            stack_display_style_gap_min: mvr_value(r)?,
-            stretch_stack_top_shift_up: mvr_value(r)?,
-            stretch_stack_bottom_shift_down: mvr_value(r)?,
-            stretch_stack_gap_above_min: mvr_value(r)?,
-            stretch_stack_gap_below_min: mvr_value(r)?,
-            skewed_fraction_horizontal_gap: mvr_value(r)?,
-            skewed_fraction_vertical_gap: mvr_value(r)?,
-            space_after_script: mvr_value(r)?,
+            fraction_numerator_shift_up: mvr(r)?,
+            fraction_numerator_display_style_shift_up: mvr(r)?,
+            fraction_denominator_shift_down: mvr(r)?,
+            fraction_denominator_display_style_shift_down: mvr(r)?,
+            fraction_numerator_gap_min: mvr(r)?,
+            fraction_num_display_style_gap_min: mvr(r)?,
+            fraction_rule_thickness: mvr(r)?,
+            fraction_denominator_gap_min: mvr(r)?,
+            fraction_denom_display_style_gap_min: mvr(r)?,
 
-            // Radical
-            radical_min_display_height: mvr_value(r)?,
-            radical_gap_before: mvr_value(r)?,
-            radical_rule_thickness: mvr_value(r)?,
-            radical_extra_ascender: mvr_value(r)?,
-            radical_kern_before_degree: mvr_value(r)?,
-            radical_kern_after_degree: mvr_value(r)?,
-            radical_degree_gap_min: mvr_value(r)?,
-            radical_degree_rule_thickness: mvr_value(r)?,
-            radical_display_style_vertical_gap: mvr_value(r)?,
+            skewed_fraction_horizontal_gap: mvr(r)?,
+            skewed_fraction_vertical_gap: mvr(r)?,
 
-            // --- Last simple UShort ---
+            overbar_vertical_gap: mvr(r)?,
+            overbar_rule_thickness: mvr(r)?,
+            overbar_extra_ascender: mvr(r)?,
+
+            underbar_vertical_gap: mvr(r)?,
+            underbar_rule_thickness: mvr(r)?,
+            underbar_extra_descender: mvr(r)?,
+
+            radical_vertical_gap: mvr(r)?,
+            radical_display_style_vertical_gap: mvr(r)?,
+            radical_rule_thickness: mvr(r)?,
+            radical_extra_ascender: mvr(r)?,
+            radical_kern_before_degree: mvr(r)?,
+            radical_kern_after_degree: mvr(r)?,
+
+            // --- trailing uint16 ---
             radical_degree_bottom_raise_percent: r.read_ufword()?,
         })
     }

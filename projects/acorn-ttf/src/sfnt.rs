@@ -13,6 +13,9 @@
 //! Face offsets[]          4 * numFaces bytes
 //! [per face SFNT ...]
 //! ```
+//! Inside a TTC, table record offsets are relative to the collection file, not
+//! to the face. [`Face`] stores them rebased onto its own byte range so callers
+//! can treat every face like a standalone SFNT.
 
 use crate::reader::{ReadError, Reader, Tag};
 use std::collections::HashMap;
@@ -259,7 +262,11 @@ fn parse_single_face(bytes: &[u8], face_offset: usize) -> Result<Face, ParseErro
     let mut tables = HashMap::with_capacity(num);
 
     for _ in 0..num {
-        let rec = TableRecord::parse(&mut r)?;
+        let mut rec = TableRecord::parse(&mut r)?;
+        // In a TTC every table offset is relative to the start of the collection
+        // file, while `Face::bytes` starts at this face's offset table. Rebasing
+        // the record keeps `Face::table_data` a plain slice from the face base.
+        rec.offset = rec.offset.checked_sub(face_offset as u32).ok_or(ParseError::Overflow)?;
         let _ = order.push(rec.tag);
         tables.insert(rec.tag, rec);
     }
