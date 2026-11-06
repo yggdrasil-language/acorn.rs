@@ -1,0 +1,15 @@
+[package]
+name = "acorn-tar"
+version.workspace = true
+authors.workspace = true
+description = "Tar container facts, reading, writing and tar-gzip composition for Acorn."
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository = "https://github.com/yggdrasil-language/acorn.rs/tree/dev/projects/acorn-tar"
+publish = false
+
+[dependencies]
+acorn-codec = { workspace = true, features = ["compression"] }
+acorn-core = { workspace = true }
+acorn-source = { workspace = true }
