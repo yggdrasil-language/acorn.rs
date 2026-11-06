@@ -8,6 +8,9 @@ pub const FLAG_ENCRYPTED: u16 = 1 << 0;
 pub const FLAG_STRONG_ENCRYPTION: u16 = 1 << 6;
 /// General-purpose bit flag: names and comments use UTF-8 (bit 11).
 pub const FLAG_UTF8_NAME: u16 = 1 << 11;
+/// General-purpose bit flag: sizes and CRC follow the payload in a data
+/// descriptor (bit 3).
+pub const FLAG_DATA_DESCRIPTOR: u16 = 1 << 3;
 /// General-purpose bit flag: sizes are masked in the local header (bit 13).
 pub const FLAG_MASKED_DATA: u16 = 1 << 13;
 

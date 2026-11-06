@@ -220,6 +220,10 @@ pub fn read_member_payload<S: ByteSource>(
 ) -> Result<Vec<u8>, ZipViewError> {
     let decoded = decode_member("zip-member", source, member, ledger)?;
     let length = decoded.length().ok_or(ZipViewError::InvalidRange)? as usize;
+    if length == 0 {
+        // Zero-length members are legal, and an empty destination reads as EOF.
+        return Ok(Vec::new());
+    }
     let mut buffer = vec![0u8; length];
     match decoded.read_at(0, &mut buffer) {
         Ok(ReadOutcome::Complete) => Ok(buffer),
