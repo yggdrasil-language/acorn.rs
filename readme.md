@@ -93,6 +93,7 @@ acorn ────────→ acorn-core + acorn-source + acorn-codec + acor
 | [`acorn-source`](./projects/acorn-source) | `ByteSource`, windows, in-memory sources/sinks, range maps, source identity        | ✅ Active |
 | [`acorn-codec`](./projects/acorn-codec)   | Bit I/O, integer/representation transforms, Deflate / zlib / gzip                  | ✅ Active |
 | [`acorn-probe`](./projects/acorn-probe)   | Magic-byte signatures, probe candidates, container registry                        | ✅ Active |
+| [`acorn-zip`](./projects/acorn-zip)       | ZIP container facts, member decoding and writer                                    | ✅ Active |
 | [`acorn-host`](./projects/acorn-host)     | Minimal per-platform host executable wrappers                                      | ✅ Active |
 | [`acorn`](./projects/acorn)               | Format-neutral aggregate facade                                                    | ✅ Active |
 
@@ -109,7 +110,6 @@ added to the workspace only once it has real samples and structural tests. The s
 
 | Adapter                                     | Description                                          |
 |---------------------------------------------|------------------------------------------------------|
-| [`acorn-zip`](./projects/acorn-zip)         | ZIP central-directory indexer and member decoding    |
 | [`acorn-cfb`](./examples/acorn-cfb)         | Compound File Binary Format (OLE/CFB) reader         |
 | [`acorn-doc`](./examples/acorn-doc)         | Legacy Word `.doc` (OLE + Word binary) semantics     |
 | [`acorn-docx`](./examples/acorn-docx)       | DOCX OPC package layout on top of `acorn-zip`        |

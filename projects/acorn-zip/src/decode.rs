@@ -3,6 +3,7 @@ use acorn_core::{Budget, BudgetError, BudgetTracker};
 use acorn_source::{ByteSource, MemorySource, ReadOutcome};
 
 use crate::{
+    crc::ieee_crc32,
     entry::ZipMember,
     view::{COMPRESSION_DEFLATE, COMPRESSION_STORED, ZipViewError, read_raw_payload},
 };
@@ -209,22 +210,6 @@ fn map_codec_error(error: CodecError) -> ZipViewError {
 /// Maps a ledger refusal to the member-view budget failure.
 fn map_budget_error(_: BudgetError) -> ZipViewError {
     ZipViewError::BudgetExceeded
-}
-
-fn ieee_crc32(bytes: &[u8]) -> u32 {
-    let mut crc = 0xffff_ffffu32;
-    for &b in bytes {
-        crc ^= u32::from(b);
-        for _ in 0..8 {
-            if crc & 1 != 0 {
-                crc = (crc >> 1) ^ 0xEDB8_8320;
-            }
-            else {
-                crc >>= 1;
-            }
-        }
-    }
-    !crc
 }
 
 /// Reads and decodes a member payload into an owned buffer.
