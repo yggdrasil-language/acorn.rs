@@ -8,8 +8,11 @@ const ZIP64_EOCD_SIG: u32 = 0x0606_4b50;
 /// Resolved sizes and offsets that may come from ZIP64 extra fields.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Zip64Fields {
+    /// Uncompressed size, when supplied by the ZIP64 record.
     pub uncompressed_size: u64,
+    /// Compressed size, when supplied by the ZIP64 record.
     pub compressed_size: u64,
+    /// Offset of the local file header, when supplied by the ZIP64 record.
     pub local_header_offset: u64,
 }
 

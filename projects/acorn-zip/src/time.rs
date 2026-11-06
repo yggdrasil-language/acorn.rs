@@ -41,7 +41,7 @@ impl ZipDosDateTime {
     pub fn parts(self) -> Option<ZipDateTime> {
         let day = (self.date & 0x1f) as u8;
         let month = ((self.date >> 5) & 0x0f) as u8;
-        let year = ((self.date >> 9) & 0x7f) as u16 + DOS_MIN_YEAR;
+        let year = ((self.date >> 9) & 0x7f) + DOS_MIN_YEAR;
         let second = ((self.time & 0x1f) * 2) as u8;
         let minute = ((self.time >> 5) & 0x3f) as u8;
         let hour = ((self.time >> 11) & 0x1f) as u8;

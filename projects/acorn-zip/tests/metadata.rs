@@ -28,6 +28,7 @@ fn put32(buffer: &mut Vec<u8>, value: u32) {
 }
 
 /// Builds a stored single-member archive with the supplied header facts.
+#[allow(clippy::too_many_arguments)]
 fn stored_zip(
     name: &[u8],
     flags: u16,
