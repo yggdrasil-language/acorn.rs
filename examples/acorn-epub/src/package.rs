@@ -1,6 +1,6 @@
 use acorn_core::{Budget, BudgetTracker};
 use acorn_source::{ByteSource, MemorySource};
-use acorn_zip::{ZipArchiveIndex, ZipIndexError, ZipMember, ZipViewError, index_zip, read_member_payload};
+use acorn_zip::{ZipArchiveIndex, ZipIndexError, ZipMember, ZipNameEncoding, ZipViewError, index_zip, read_member_payload};
 
 use crate::{
     container::{ContainerRootFile, parse_container_xml},
@@ -95,7 +95,7 @@ impl OcfPackage {
     /// Returns a member for a normalized package path.
     pub fn member(&self, path: &str) -> Option<&ZipMember> {
         let normalized = normalize_member_path(path);
-        self.zip.members.iter().find(|member| member.path == normalized)
+        self.zip.members.iter().find(|member| member_name(member) == normalized)
     }
 
     /// Reads and decodes a package member into memory.
@@ -114,7 +114,7 @@ impl OcfPackage {
 
     /// Lists normalized member paths in central directory order.
     pub fn member_paths(&self) -> Vec<String> {
-        self.zip.members.iter().map(|member| member.path.clone()).collect()
+        self.zip.members.iter().map(member_name).collect()
     }
 
     /// Resolves a manifest `href` relative to the OPF directory.
@@ -122,6 +122,19 @@ impl OcfPackage {
         let base = opf_path.rsplit_once('/').map(|(dir, _)| dir).unwrap_or("");
         let joined = if base.is_empty() { href.to_string() } else { format!("{}/{}", base, href) };
         normalize_member_path(&joined)
+    }
+}
+
+/// Decodes a member name for package lookup.
+///
+/// ZIP only records whether the writer declared UTF-8. OCF paths are ASCII, so a
+/// lossy fallback is enough here and the shared ZIP layer stays byte-level.
+fn member_name(member: &ZipMember) -> String {
+    match member.name_encoding() {
+        ZipNameEncoding::Utf8 => std::str::from_utf8(&member.raw_name)
+            .map(str::to_owned)
+            .unwrap_or_else(|_| String::from_utf8_lossy(&member.raw_name).into_owned()),
+        ZipNameEncoding::Unspecified => String::from_utf8_lossy(&member.raw_name).into_owned(),
     }
 }
 
@@ -138,7 +151,10 @@ fn read_member_bytes(
     ledger: &mut BudgetTracker,
 ) -> Result<Vec<u8>, OcfError> {
     let normalized = normalize_member_path(path);
-    let member =
-        zip.members.iter().find(|member| member.path == normalized).ok_or_else(|| OcfError::MemberNotFound(normalized))?;
+    let member = zip
+        .members
+        .iter()
+        .find(|member| member_name(member) == normalized)
+        .ok_or_else(|| OcfError::MemberNotFound(normalized))?;
     read_member_payload(source.clone(), member, ledger).map_err(OcfError::from)
 }
