@@ -20,6 +20,20 @@ use crate::{
 
 use super::{deflate::Deflate, gzip::Gzip, zlib::Zlib};
 
+/// Outcome of one pull from a resumable decoder.
+///
+/// Unlike [`StreamDecoder`], which buffers a whole member, resumable decoders
+/// report every stop reason so the caller can control pacing and memory.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StreamChunk {
+    /// `n` bytes were written into the caller's buffer.
+    Produced(usize),
+    /// No byte could be committed; more input is required.
+    NeedInput,
+    /// The bitstream ended successfully.
+    Finished,
+}
+
 /// Compression protocol a stream decoder expects.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CompressionProtocol {

@@ -25,7 +25,7 @@ use super::{
 /// Fixed member header: deflate, no flags, zero timestamp, `XFL` 0, unknown OS.
 ///
 /// The timestamp and `XFL` stay fixed so `Gzip::encode` is reproducible.
-const MEMBER_HEADER: [u8; 10] = [0x1F, 0x8B, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF];
+pub(crate) const MEMBER_HEADER: [u8; 10] = [0x1F, 0x8B, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF];
 
 /// Gzip member flag: an extra field follows the header.
 const FLAG_EXTRA: u8 = 0x04;
@@ -66,6 +66,16 @@ impl Gzip {
     /// Creates a buffered stream decoder for gzip.
     pub fn decoder(limits: CodecLimits) -> StreamDecoder {
         StreamDecoder::new(CompressionProtocol::Gzip, limits)
+    }
+
+    /// Creates a resumable decoder fed by bounded input chunks.
+    pub fn stream_decoder(limits: CodecLimits) -> crate::compression::GzipStreamDecoder {
+        crate::compression::GzipStreamDecoder::new(limits)
+    }
+
+    /// Creates an encoder that emits a header, blocks per chunk, and a trailer.
+    pub fn stream_encoder(level: DeflateLevel) -> crate::compression::GzipStreamEncoder {
+        crate::compression::GzipStreamEncoder::new(level)
     }
 }
 

@@ -15,12 +15,16 @@
 mod checksum;
 pub mod deflate;
 pub mod gzip;
+mod gzip_stream;
+pub(crate) mod input;
 mod stream;
 pub mod zlib;
 
 pub use self::{
-    deflate::Deflate,
+    checksum::Crc32,
+    deflate::{Deflate, DeflateStreamDecoder, DeflateStreamEncoder},
     gzip::Gzip,
-    stream::{CompressionProtocol, StreamCodec, StreamDecoder},
+    gzip_stream::{GzipStreamDecoder, GzipStreamEncoder},
+    stream::{CompressionProtocol, StreamChunk, StreamCodec, StreamDecoder},
     zlib::Zlib,
 };

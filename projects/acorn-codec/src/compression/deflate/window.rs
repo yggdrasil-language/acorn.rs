@@ -27,12 +27,17 @@ impl SlidingWindow {
 
     /// Appends a literal byte to the window and `output`.
     pub fn push_literal(&mut self, byte: u8, output: &mut Vec<u8>) {
+        output.push(self.push_byte(byte));
+    }
+
+    /// Stores a literal byte and returns it for a streaming caller's buffer.
+    pub fn push_byte(&mut self, byte: u8) -> u8 {
         self.buffer[self.pos] = byte;
         self.pos = (self.pos + 1) % WINDOW_SIZE;
         if self.filled < WINDOW_SIZE {
             self.filled += 1;
         }
-        output.push(byte);
+        byte
     }
 
     /// Copies `length` bytes from `distance` bytes back into the window and `output`.
@@ -41,15 +46,23 @@ impl SlidingWindow {
     /// decoder owns the bit position reported for invalid references.
     pub fn copy_back(&mut self, distance: u32, length: u32, output: &mut Vec<u8>) {
         for _ in 0..length {
-            let src = (self.pos + WINDOW_SIZE - distance as usize) % WINDOW_SIZE;
-            let byte = self.buffer[src];
-            self.buffer[self.pos] = byte;
-            self.pos = (self.pos + 1) % WINDOW_SIZE;
-            if self.filled < WINDOW_SIZE {
-                self.filled += 1;
-            }
-            output.push(byte);
+            output.push(self.back_byte(distance));
         }
+    }
+
+    /// Produces the next byte of a back-reference and advances the window.
+    ///
+    /// Streaming callers use this to write straight into their own buffer, which
+    /// also lets a match pause and resume when that buffer fills.
+    pub fn back_byte(&mut self, distance: u32) -> u8 {
+        let src = (self.pos + WINDOW_SIZE - distance as usize) % WINDOW_SIZE;
+        let byte = self.buffer[src];
+        self.buffer[self.pos] = byte;
+        self.pos = (self.pos + 1) % WINDOW_SIZE;
+        if self.filled < WINDOW_SIZE {
+            self.filled += 1;
+        }
+        byte
     }
 }
 

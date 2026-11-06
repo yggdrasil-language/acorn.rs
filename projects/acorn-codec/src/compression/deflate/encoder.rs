@@ -48,12 +48,12 @@ impl DeflateEncoder {
     /// Encodes `input` as a raw Deflate stream.
     pub fn encode(&self, input: &[u8]) -> Vec<u8> {
         match self.level {
-            DeflateLevel::Store => encode_stored(input),
-            DeflateLevel::Fast => encode(&tokens(input, FAST_SEARCH), BlockKind::Fixed).expect("fixed block"),
+            DeflateLevel::Store => encode_stored(input, true),
+            DeflateLevel::Fast => encode(&tokens(input, FAST_SEARCH), BlockKind::Fixed, true).expect("fixed block"),
             DeflateLevel::Default => {
                 let tokens = tokens(input, DEEP_SEARCH);
-                let fixed = encode(&tokens, BlockKind::Fixed).expect("fixed block");
-                match encode(&tokens, BlockKind::Dynamic) {
+                let fixed = encode(&tokens, BlockKind::Fixed, true).expect("fixed block");
+                match encode(&tokens, BlockKind::Dynamic, true) {
                     Some(dynamic) if dynamic.len() < fixed.len() => dynamic,
                     _ => fixed,
                 }
@@ -88,14 +88,14 @@ const MAX_CODE_BITS: u8 = 15;
 /// Maximum code length of a code-length table (RFC 1951 section 3.2.7).
 const MAX_CODE_LENGTH_BITS: u8 = 7;
 
-fn encode_stored(input: &[u8]) -> Vec<u8> {
-    let mut writer = BitWriter::new(BitOrder::LeastSignificantBitFirst);
+/// Writes `input` as one or more stored blocks into `writer`.
+fn write_stored(writer: &mut BitWriter, input: &[u8], final_block: bool) {
     let mut offset = 0usize;
     loop {
         let length = (input.len() - offset).min(MAX_STORED);
         let last = offset + length == input.len();
 
-        let _ = writer.write_bits(u32::from(last), 1);
+        let _ = writer.write_bits(u32::from(final_block && last), 1);
         let _ = writer.write_bits(0, 2);
         writer.align_to_byte();
 
@@ -110,9 +110,15 @@ fn encode_stored(input: &[u8]) -> Vec<u8> {
 
         offset += length;
         if last {
-            return writer.finish();
+            return;
         }
     }
+}
+
+fn encode_stored(input: &[u8], final_block: bool) -> Vec<u8> {
+    let mut writer = BitWriter::new(BitOrder::LeastSignificantBitFirst);
+    write_stored(&mut writer, input, final_block);
+    writer.finish()
 }
 
 /// One LZ77 output token.
@@ -156,52 +162,57 @@ fn tokens(input: &[u8], chain_depth: usize) -> Vec<Token> {
     tokens
 }
 
-/// Encodes `tokens` as one final block, or returns `None` when the dynamic
-/// tables cannot be expressed inside the RFC limits.
-fn encode(tokens: &[Token], kind: BlockKind) -> Option<Vec<u8>> {
-    let mut writer = BitWriter::new(BitOrder::LeastSignificantBitFirst);
-    let _ = writer.write_bits(1, 1);
-
+/// Writes `tokens` as one block into `writer`.
+///
+/// Returns `None` when the dynamic tables cannot be expressed inside the RFC
+/// limits. Nothing is written in that case, so the caller can retry the same
+/// token stream as a fixed block without corrupting the bit position.
+///
+/// `final_block` selects the `BFINAL` bit. Streaming encoders emit intermediate
+/// blocks with `false` and terminate with `true`.
+fn write_block(writer: &mut BitWriter, tokens: &[Token], kind: BlockKind, final_block: bool) -> Option<()> {
     let plan = match kind {
-        BlockKind::Fixed => {
-            let _ = writer.write_bits(1, 2);
-            None
-        }
-        BlockKind::Dynamic => {
-            let plan = DynamicPlan::build(tokens)?;
-            let _ = writer.write_bits(2, 2);
-            plan.write_header(&mut writer);
-            Some(plan)
-        }
+        BlockKind::Fixed => None,
+        BlockKind::Dynamic => Some(DynamicPlan::build(tokens)?),
     };
 
+    let _ = writer.write_bits(u32::from(final_block), 1);
     match &plan {
         Some(plan) => {
-            plan.write_tokens(&mut writer, tokens);
-            plan.write_literal_symbol(&mut writer, 256);
+            let _ = writer.write_bits(2, 2);
+            plan.write_header(writer);
+            plan.write_tokens(writer, tokens);
+            plan.write_literal_symbol(writer, 256);
         }
         None => {
+            let _ = writer.write_bits(1, 2);
             for token in tokens {
                 match token {
-                    Token::Literal(byte) => write_symbol(&mut writer, u16::from(*byte)),
+                    Token::Literal(byte) => write_symbol(writer, u16::from(*byte)),
                     Token::Match { length, distance } => {
                         let (index, extra, extra_bits) = length_index(*length);
-                        write_symbol(&mut writer, 257 + index as u16);
+                        write_symbol(writer, 257 + index as u16);
                         if extra_bits > 0 {
                             let _ = writer.write_bits(extra, extra_bits);
                         }
                         let (distance_index, extra, extra_bits) = distance_index(*distance);
-                        write_code(&mut writer, distance_index as u32, 5);
+                        write_code(writer, distance_index as u32, 5);
                         if extra_bits > 0 {
                             let _ = writer.write_bits(extra, extra_bits);
                         }
                     }
                 }
             }
-            write_symbol(&mut writer, 256);
+            write_symbol(writer, 256);
         }
     }
 
+    Some(())
+}
+
+fn encode(tokens: &[Token], kind: BlockKind, final_block: bool) -> Option<Vec<u8>> {
+    let mut writer = BitWriter::new(BitOrder::LeastSignificantBitFirst);
+    write_block(&mut writer, tokens, kind, final_block)?;
     Some(writer.finish())
 }
 
@@ -542,9 +553,88 @@ fn run_length_encode(lengths: &[u8]) -> (Vec<(u8, u32, u8)>, [u32; 19]) {
     (sequence, frequencies)
 }
 
+/// Incremental raw Deflate encoder.
+///
+/// Every [`DeflateStreamEncoder::feed`] call is emitted as one non-final block,
+/// and [`DeflateStreamEncoder::finish`] writes an empty final block that closes
+/// the stream. Blocks share one bit cursor, so no padding bits separate them.
+///
+/// Matches never cross a feed boundary and no window state is retained between
+/// calls, so the caller chooses the trade between chunk size and compression
+/// ratio. `Default` uses a dynamic table whenever the RFC limits allow one and
+/// falls back to the fixed table otherwise, without comparing the two encodings
+/// byte for byte. Peak memory is bounded by the largest chunk passed to `feed`.
+#[derive(Debug, Clone)]
+pub struct DeflateStreamEncoder {
+    level: DeflateLevel,
+    writer: BitWriter,
+    finished: bool,
+}
+
+impl DeflateStreamEncoder {
+    /// Creates a streaming encoder for `level`.
+    #[inline]
+    pub fn new(level: DeflateLevel) -> Self {
+        Self { level, writer: BitWriter::new(BitOrder::LeastSignificantBitFirst), finished: false }
+    }
+
+    /// Returns the configured level.
+    #[inline]
+    pub const fn level(&self) -> DeflateLevel {
+        self.level
+    }
+
+    /// Returns whether the terminal block has been emitted.
+    #[inline]
+    pub const fn is_finished(&self) -> bool {
+        self.finished
+    }
+
+    /// Compresses one bounded chunk into newly emitted whole bytes.
+    ///
+    /// Nothing is emitted for an empty chunk or after `finish`. A partially
+    /// filled byte stays inside the encoder so the next block continues at the
+    /// same bit position.
+    pub fn feed(&mut self, input: &[u8]) -> Vec<u8> {
+        if self.finished || input.is_empty() {
+            return Vec::new();
+        }
+        match self.level {
+            DeflateLevel::Store => write_stored(&mut self.writer, input, false),
+            DeflateLevel::Fast => {
+                let tokens = tokens(input, FAST_SEARCH);
+                write_block(&mut self.writer, &tokens, BlockKind::Fixed, false).expect("fixed block");
+            }
+            DeflateLevel::Default => {
+                let tokens = tokens(input, DEEP_SEARCH);
+                if write_block(&mut self.writer, &tokens, BlockKind::Dynamic, false).is_none() {
+                    write_block(&mut self.writer, &tokens, BlockKind::Fixed, false).expect("fixed block");
+                }
+            }
+        }
+        self.writer.take_bytes()
+    }
+
+    /// Emits the terminal block exactly once and releases the bit cursor.
+    pub fn finish(&mut self) -> Vec<u8> {
+        if self.finished {
+            return Vec::new();
+        }
+        self.finished = true;
+        let mut writer = std::mem::replace(&mut self.writer, BitWriter::new(BitOrder::LeastSignificantBitFirst));
+        match self.level {
+            DeflateLevel::Store => write_stored(&mut writer, &[], true),
+            DeflateLevel::Fast | DeflateLevel::Default => {
+                write_block(&mut writer, &[], BlockKind::Fixed, true).expect("fixed block");
+            }
+        }
+        writer.finish()
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{BlockKind, DEEP_SEARCH, DeflateEncoder, DeflateLevel, encode, tokens};
+    use super::{BlockKind, DEEP_SEARCH, DeflateEncoder, DeflateLevel, DeflateStreamEncoder, encode, tokens};
 
     #[test]
     fn stored_blocks_split_at_the_length_limit() {
@@ -564,9 +654,25 @@ mod tests {
     fn dynamic_encoding_beats_fixed_on_skewed_input() {
         let payload = b"the quick brown fox jumps over the lazy dog. ".repeat(60);
         let tokens = tokens(&payload, DEEP_SEARCH);
-        let dynamic = encode(&tokens, BlockKind::Dynamic).expect("dynamic tables fit");
-        let fixed = encode(&tokens, BlockKind::Fixed).expect("fixed block");
+        let dynamic = encode(&tokens, BlockKind::Dynamic, true).expect("dynamic tables fit");
+        let fixed = encode(&tokens, BlockKind::Fixed, true).expect("fixed block");
         assert_eq!((dynamic[0] >> 1) & 3, 2, "dynamic block type");
         assert!(dynamic.len() < fixed.len());
+    }
+
+    #[test]
+    fn streaming_encoder_produces_a_decodable_stream() {
+        let payload = b"streamed blocks keep memory flat while matching. ".repeat(500);
+        for level in [DeflateLevel::Store, DeflateLevel::Fast, DeflateLevel::Default] {
+            let mut encoder = DeflateStreamEncoder::new(level);
+            let mut encoded = Vec::new();
+            for chunk in payload.chunks(257) {
+                encoded.extend_from_slice(&encoder.feed(chunk));
+            }
+            encoded.extend_from_slice(&encoder.finish());
+            let decoded = crate::compression::Deflate::decode(&encoded, crate::limits::CodecLimits::new())
+                .unwrap_or_else(|error| panic!("level {level:?} stream is invalid: {error}"));
+            assert_eq!(decoded.value, payload, "level {level:?}");
+        }
     }
 }

@@ -1,6 +1,6 @@
 use acorn_codec::{
     CodecError, CodecLimits, StreamState,
-    compression::{Deflate, StreamCodec, Zlib, deflate::DeflateLevel},
+    compression::{Deflate, Zlib, deflate::DeflateLevel},
 };
 
 #[test]

@@ -8,6 +8,7 @@ mod block;
 mod decoder;
 mod encoder;
 mod huffman;
+pub(crate) mod stream;
 mod window;
 
 use crate::{error::CodecError, facts::DecodeFacts, limits::CodecLimits};
@@ -18,7 +19,8 @@ pub use self::{
     block::{
         DeflateBlock, DeflateBlockPlan, FixedBlock, StoredBlock, Symbol, write_block, write_fixed_block, write_stored_block,
     },
-    encoder::{DeflateEncoder, DeflateLevel},
+    encoder::{DeflateEncoder, DeflateLevel, DeflateStreamEncoder},
+    stream::DeflateStreamDecoder,
 };
 
 /// Raw Deflate stream algorithm.
@@ -39,5 +41,15 @@ impl Deflate {
     /// Creates a buffered stream decoder for raw Deflate.
     pub fn decoder(limits: CodecLimits) -> StreamDecoder {
         StreamDecoder::new(CompressionProtocol::Deflate, limits)
+    }
+
+    /// Creates a resumable decoder fed by bounded input chunks.
+    pub fn stream_decoder(limits: CodecLimits) -> DeflateStreamDecoder {
+        DeflateStreamDecoder::new(limits)
+    }
+
+    /// Creates an encoder that emits blocks per input chunk.
+    pub fn stream_encoder(level: DeflateLevel) -> DeflateStreamEncoder {
+        DeflateStreamEncoder::new(level)
     }
 }

@@ -19,11 +19,13 @@
 mod order;
 mod position;
 mod reader;
+mod source;
 mod writer;
 
 pub use self::{
     order::BitOrder,
     position::BitPosition,
     reader::{BitReader, MAX_READ_BITS},
+    source::BitSource,
     writer::{BitWriter, MAX_WRITE_BITS},
 };
