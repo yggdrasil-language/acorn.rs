@@ -20,26 +20,13 @@
 //! within one font unit, so the pair also cross-checks the variant advance
 //! against independently measured outline extents.
 
+mod common;
+
 use acorn_ttf::{
     font::FontFace,
     sfnt::parse_font_validated,
     tables::math::{MathKernTable, MathTable},
 };
-
-/// Latin Modern Math shipped with the VuTeX workspace.
-const LMM_PATH: &str = r#"E:\dxo 深度学习\VuTeX\projects\crates\vutex-text\assets\LatinModernMath-Regular.otf"#;
-/// TrueType-flavoured math font (face 1 of the Windows Cambria collection).
-const CAMBRIA_TTC_PATH: &str = r"C:\Windows\Fonts\cambria.ttc";
-
-fn read_font(path: &str) -> Option<Vec<u8>> {
-    match std::fs::read(path) {
-        Ok(data) => Some(data),
-        Err(_) => {
-            eprintln!("SKIP: font not available at {path}");
-            None
-        }
-    }
-}
 
 fn acorn_math(data: &[u8], face_index: usize) -> (MathTable, u16) {
     let container = parse_font_validated(data).expect("container");
@@ -319,7 +306,7 @@ fn check_assemblies(math: &MathTable, expected: &[AssemblyExpectation]) {
 
 #[test]
 fn latin_modern_math_matches_fonttools_oracle() {
-    let Some(data) = read_font(LMM_PATH)
+    let Some(data) = common::latin_modern_math()
     else {
         return;
     };
@@ -341,7 +328,7 @@ fn latin_modern_math_matches_fonttools_oracle() {
 
 #[test]
 fn cambria_math_matches_fonttools_oracle() {
-    let Some(data) = read_font(CAMBRIA_TTC_PATH)
+    let Some(data) = common::cambria_math()
     else {
         return;
     };

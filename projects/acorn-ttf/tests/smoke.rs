@@ -1,21 +1,24 @@
-//! Smoke test that loads LatinModernMath-Regular.otf and reports facts.
+//! Smoke test that loads Latin Modern Math and reports facts.
 //!
 //! This is deliberately an integration test under `tests/` so that it runs
-//! against the full public API of `acorn-ttf`. The font is loaded via an
-//! absolute path — if the file moves, adjust `LMM_PATH` below.
+//! against the full public API of `acorn-ttf`. The font comes from
+//! `common::latin_modern_math`, which reports an explicit skip when no font is
+//! available instead of failing the suite.
+
+mod common;
 
 use acorn_ttf::{font::FontFace, license::LicenseKind, sfnt, tables::PartRecord};
 
-const LMM_PATH: &str = r#"E:\dxo 深度学习\VuTeX\projects\crates\vutex-text\assets\LatinModernMath-Regular.otf"#;
-
-fn load_lmm() -> FontFace {
-    let data = std::fs::read(LMM_PATH).expect("LMM OTF must be present at LMM_PATH");
-    FontFace::load(&data).expect("parse LMM OTF")
+fn load_lmm() -> Option<FontFace> {
+    common::latin_modern_math().map(|data| FontFace::load(&data).expect("parse LMM OTF"))
 }
 
 #[test]
 fn smoke_lmm_container() {
-    let mut face = load_lmm();
+    let Some(mut face) = load_lmm()
+    else {
+        return;
+    };
     assert!(face.is_opentype_cff());
     assert!(!face.is_truetype_glyf());
     assert!(face.has_math());
@@ -32,7 +35,10 @@ fn smoke_lmm_container() {
 
 #[test]
 fn smoke_lmm_head_maxp() {
-    let mut face = load_lmm();
+    let Some(mut face) = load_lmm()
+    else {
+        return;
+    };
     let head = face.head().expect("head");
     assert_eq!(head.magic_number, 0x5F0F_3CF5);
     assert_eq!(head.units_per_em, 1000);
@@ -43,7 +49,10 @@ fn smoke_lmm_head_maxp() {
 
 #[test]
 fn smoke_lmm_cmap() {
-    let mut face = load_lmm();
+    let Some(mut face) = load_lmm()
+    else {
+        return;
+    };
     let cmap = face.cmap().expect("cmap");
     assert!(cmap.lookup('+' as u32).is_some());
     assert!(cmap.lookup('=' as u32).is_some());
@@ -55,7 +64,10 @@ fn smoke_lmm_cmap() {
 
 #[test]
 fn smoke_lmm_math_constants() {
-    let mut face = load_lmm();
+    let Some(mut face) = load_lmm()
+    else {
+        return;
+    };
     let math = face.math().expect("MATH");
     assert_eq!(math.version.0, 1, "LMM uses MATH version 1");
     // sanity check a few constants in expected ballpark.
@@ -73,7 +85,10 @@ fn smoke_lmm_math_constants() {
 
 #[test]
 fn smoke_lmm_math_glyph_info() {
-    let mut face = load_lmm();
+    let Some(mut face) = load_lmm()
+    else {
+        return;
+    };
     let math = face.math().expect("MATH");
     let info = &math.glyph_info;
     // Counts and values below come from fontTools on LatinModernMath-Regular.otf.
@@ -90,7 +105,10 @@ fn smoke_lmm_math_glyph_info() {
 
 #[test]
 fn smoke_lmm_math_variants() {
-    let mut face = load_lmm();
+    let Some(mut face) = load_lmm()
+    else {
+        return;
+    };
     let math = face.math().expect("MATH");
     let variants = &math.variants;
     assert_eq!(variants.min_connector_overlap, 20.0);
@@ -119,7 +137,10 @@ fn smoke_lmm_math_variants() {
 
 #[test]
 fn smoke_lmm_license() {
-    let mut face = load_lmm();
+    let Some(mut face) = load_lmm()
+    else {
+        return;
+    };
     let info = acorn_ttf::license::LicenseInfo::from_face(&mut face);
     // LMM is under GUST Font License / SIL OFL.
     assert!(matches!(info.kind, LicenseKind::Gust | LicenseKind::OfL), "kind={:?}", info.kind);

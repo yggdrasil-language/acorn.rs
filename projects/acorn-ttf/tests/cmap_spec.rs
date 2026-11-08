@@ -7,6 +7,11 @@
 //! Glyph ids, horizontal advances and glyph boxes must agree glyph by glyph.
 //! Cmap formats that neither font uses (0, 10, 13) and the precedence rules
 //! are covered with synthetic payloads.
+//!
+//! Real-font assertions are skipped with an explicit message when no font is
+//! available (see `common`).
+
+mod common;
 
 use acorn_ttf::{
     font::FontFace,
@@ -15,11 +20,6 @@ use acorn_ttf::{
 };
 use std::collections::BTreeSet;
 
-/// Latin Modern Math shipped with the VuTeX workspace.
-const LMM_PATH: &str = r#"E:\dxo 深度学习\VuTeX\projects\crates\vutex-text\assets\LatinModernMath-Regular.otf"#;
-/// TrueType-flavoured math font (face 1 of the Windows Cambria collection).
-const CAMBRIA_TTC_PATH: &str = r"C:\Windows\Fonts\cambria.ttc";
-
 /// Codepoints named by the VuTeX font migration report, plus a supplementary
 /// plane pair that only a `format 12` subtable can answer.
 const SAMPLE: &[char] = &['A', 'a', '0', '+', '=', '√', '∑', '∫', '∈', 'α', '∞', '→', '−', '\u{1D400}', '\u{1D7CA}'];
@@ -27,16 +27,6 @@ const SAMPLE: &[char] = &['A', 'a', '0', '+', '=', '√', '∑', '∫', '∈', '
 /// Samples every math font must map. `U+1D7CA` is Cambria-only, so it is only
 /// compared and not required.
 const REQUIRED: &[char] = &['A', 'a', '0', '+', '=', '√', '∑', '∫', '∈', 'α', '∞', '→', '−', '\u{1D400}'];
-
-fn read_font(path: &str) -> Option<Vec<u8>> {
-    match std::fs::read(path) {
-        Ok(data) => Some(data),
-        Err(_) => {
-            eprintln!("SKIP: font not available at {path}");
-            None
-        }
-    }
-}
 
 fn acorn_face(data: &[u8], face_index: u32) -> FontFace {
     let container = parse_font_validated(data).expect("container");
@@ -49,13 +39,9 @@ fn ttf_gid(face: &ttf_parser::Face<'_>, cp: u32) -> Option<u16> {
     char::from_u32(cp).and_then(|ch| face.glyph_index(ch)).map(|gid| gid.0).filter(|gid| *gid != 0)
 }
 
-fn compare_font(path: &str, face_index: u32) {
-    let Some(data) = read_font(path)
-    else {
-        return;
-    };
-    let mut font = acorn_face(&data, face_index);
-    let tt = ttf_parser::Face::parse(&data, face_index).expect("ttf-parser face");
+fn compare_font(name: &str, data: &[u8], face_index: u32) {
+    let mut font = acorn_face(data, face_index);
+    let tt = ttf_parser::Face::parse(data, face_index).expect("ttf-parser face");
     let tt_glyphs = tt.number_of_glyphs();
 
     // 1. Every required sample must be mapped by both sides and agree.
@@ -63,8 +49,8 @@ fn compare_font(path: &str, face_index: u32) {
         let cp = *ch as u32;
         let ours = font.cmap().and_then(|cmap| cmap.lookup(cp));
         let theirs = ttf_gid(&tt, cp);
-        assert!(theirs.is_some(), "{path}: ttf-parser does not map U+{cp:04X}");
-        assert_eq!(ours, theirs, "{path}: U+{cp:04X} glyph id differs from ttf-parser");
+        assert!(theirs.is_some(), "{name}: ttf-parser does not map U+{cp:04X}");
+        assert_eq!(ours, theirs, "{name}: U+{cp:04X} glyph id differs from ttf-parser");
     }
 
     // 2. Nothing we expose may be phantom, and every codepoint ttf-parser
@@ -82,7 +68,7 @@ fn compare_font(path: &str, face_index: u32) {
     }
     for cp in codepoints {
         let ours = font.cmap().and_then(|cmap| cmap.lookup(cp));
-        assert_eq!(ours, ttf_gid(&tt, cp), "{path}: U+{cp:04X} glyph id differs from ttf-parser");
+        assert_eq!(ours, ttf_gid(&tt, cp), "{name}: U+{cp:04X} glyph id differs from ttf-parser");
     }
 
     // 3. Same glyph id implies same advance and same box.
@@ -93,45 +79,53 @@ fn compare_font(path: &str, face_index: u32) {
         else {
             continue;
         };
-        assert_eq!(Some(gid), ttf_gid(&tt, cp), "{path}: U+{cp:04X} glyph id differs from ttf-parser");
-        assert!(gid < tt_glyphs, "{path}: glyph {gid} is outside the font");
+        assert_eq!(Some(gid), ttf_gid(&tt, cp), "{name}: U+{cp:04X} glyph id differs from ttf-parser");
+        assert!(gid < tt_glyphs, "{name}: glyph {gid} is outside the font");
 
         let our_advance = font.glyph_hor_advance(gid);
         let their_advance = tt.glyph_hor_advance(ttf_parser::GlyphId(gid));
-        assert_eq!(our_advance, their_advance, "{path}: glyph {gid} advance differs from ttf-parser");
+        assert_eq!(our_advance, their_advance, "{name}: glyph {gid} advance differs from ttf-parser");
 
         let our_box = font.glyph_bounding_box(gid);
         let their_box = tt.glyph_bounding_box(ttf_parser::GlyphId(gid));
         if let Some(bbox) = our_box {
             boxes += 1;
-            let other = their_box.unwrap_or_else(|| panic!("{path}: ttf-parser has no box for glyph {gid}"));
+            let other = their_box.unwrap_or_else(|| panic!("{name}: ttf-parser has no box for glyph {gid}"));
             assert_eq!(
                 (bbox.x_min, bbox.y_min, bbox.x_max, bbox.y_max),
                 (other.x_min, other.y_min, other.x_max, other.y_max),
-                "{path}: glyph {gid} box differs from ttf-parser"
+                "{name}: glyph {gid} box differs from ttf-parser"
             );
         }
     }
     if font.is_truetype_glyf() {
         // Composite and empty glyphs legitimately carry no box of their own,
         // but a TrueType font must still answer for most of the sample.
-        assert!(boxes >= SAMPLE.len() / 2, "{path}: only {boxes} of {} sample glyphs had a box", SAMPLE.len());
+        assert!(boxes >= SAMPLE.len() / 2, "{name}: only {boxes} of {} sample glyphs had a box", SAMPLE.len());
     }
 }
 
 #[test]
 fn cmap_matches_ttf_parser_on_latin_modern_math() {
-    compare_font(LMM_PATH, 0);
+    let Some(data) = common::latin_modern_math()
+    else {
+        return;
+    };
+    compare_font("Latin Modern Math", &data, 0);
 }
 
 #[test]
 fn cmap_matches_ttf_parser_on_cambria_math() {
-    compare_font(CAMBRIA_TTC_PATH, 1);
+    let Some(data) = common::cambria_math()
+    else {
+        return;
+    };
+    compare_font("Cambria Math", &data, 1);
 }
 
 #[test]
 fn macintosh_subtable_never_overrides_unicode() {
-    let Some(data) = read_font(LMM_PATH)
+    let Some(data) = common::latin_modern_math()
     else {
         return;
     };
@@ -163,7 +157,7 @@ fn macintosh_subtable_never_overrides_unicode() {
 
 #[test]
 fn unsupported_cmap_format_is_reported_not_empty() {
-    let Some(data) = read_font(CAMBRIA_TTC_PATH)
+    let Some(data) = common::cambria_math()
     else {
         return;
     };
