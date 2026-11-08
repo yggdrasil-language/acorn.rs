@@ -167,10 +167,7 @@ fn compare_constants(ours: &MathConstants, tt: &ttf_parser::math::Constants<'_>)
         radical_kern_before_degree,
         radical_kern_after_degree,
     );
-    assert_eq!(
-        ours.radical_degree_bottom_raise_percent,
-        tt.radical_degree_bottom_raise_percent() as f32
-    );
+    assert_eq!(ours.radical_degree_bottom_raise_percent, tt.radical_degree_bottom_raise_percent() as f32);
 }
 
 #[test]

@@ -46,12 +46,7 @@ fn acorn_math(data: &[u8], face_index: usize) -> MathTable {
 
 // ---- differential helpers against ttf-parser ----
 
-fn diff_math_values(
-    ours: &HashMap<u16, f32>,
-    theirs: Option<ttf_parser::math::MathValues<'_>>,
-    num_glyphs: u16,
-    what: &str,
-) {
+fn diff_math_values(ours: &HashMap<u16, f32>, theirs: Option<ttf_parser::math::MathValues<'_>>, num_glyphs: u16, what: &str) {
     let mut expected = HashMap::new();
     if let Some(values) = theirs {
         for glyph_id in 0..num_glyphs {
@@ -108,12 +103,7 @@ impl Corner {
     }
 }
 
-fn diff_kern_corner(
-    ours: &MathGlyphInfo,
-    theirs: Option<ttf_parser::math::KernInfos<'_>>,
-    num_glyphs: u16,
-    corner: Corner,
-) {
+fn diff_kern_corner(ours: &MathGlyphInfo, theirs: Option<ttf_parser::math::KernInfos<'_>>, num_glyphs: u16, corner: Corner) {
     let what = format!("{corner:?} kern");
     let ours = corner.ours(ours);
     let mut seen = 0usize;
@@ -129,8 +119,7 @@ fn diff_kern_corner(
                 continue;
             };
             seen += 1;
-            let ours =
-                ours.get(&glyph_id).unwrap_or_else(|| panic!("{what}: missing kern table for glyph {glyph_id}"));
+            let ours = ours.get(&glyph_id).unwrap_or_else(|| panic!("{what}: missing kern table for glyph {glyph_id}"));
             let count = kern.count();
             assert_eq!(ours.correction_heights.len() as u16, count, "{what}: glyph {glyph_id} height count");
             for index in 0..count {
@@ -192,10 +181,7 @@ fn diff_constructions(
                     "{what}: glyph {glyph_id} assembly italics correction differs from ttf-parser"
                 );
                 let part_count = assembly.parts.len();
-                assert_eq!(
-                    ours_assembly.parts.len() as u16, part_count,
-                    "{what}: glyph {glyph_id} assembly part count"
-                );
+                assert_eq!(ours_assembly.parts.len() as u16, part_count, "{what}: glyph {glyph_id} assembly part count");
                 for index in 0..part_count {
                     let part = assembly.parts.get(index).expect("ttf-parser part");
                     let ours_part = &ours_assembly.parts[index as usize];
@@ -465,15 +451,12 @@ fn bounded_rejects_unknown_coverage_format() {
 fn bounded_rejects_glyph_ids_outside_maxp() {
     let glyph_info = u16s(&[
         8, // MathItalicsCorrectionInfo at +8
-        0,
-        0,
-        0,
-        8, // coverage at +8
-        1, // count
-        5, // value
-        0, // device offset
-        1, // Coverage format 1
-        1, // one glyph
+        0, 0, 0, 8,    // coverage at +8
+        1,    // count
+        5,    // value
+        0,    // device offset
+        1,    // Coverage format 1
+        1,    // one glyph
         5000, // glyph id far beyond numGlyphs 10
     ]);
     let data = math_with_glyph_info(&glyph_info);
@@ -490,10 +473,7 @@ fn bounded_rejects_oversized_coverage_range() {
     // Two Coverage format 2 ranges of 0..=65535 would expand to 131072 glyphs.
     let glyph_info = u16s(&[
         8, // MathItalicsCorrectionInfo at +8
-        0,
-        0,
-        0,
-        4, // coverage at +4
+        0, 0, 0, 4, // coverage at +4
         0, // count
         2, // Coverage format 2
         2, // two ranges
@@ -512,13 +492,12 @@ fn bounded_rejects_oversized_variant_count() {
     let variants = u16s(&[
         20, // MinConnectorOverlap
         30, // VertGlyphCoverage at +30
-        0, // no horizontal coverage
-        1, // VertGlyphCount
-        0, // HorizGlyphCount
+        0,  // no horizontal coverage
+        1,  // VertGlyphCount
+        0,  // HorizGlyphCount
         16, // construction at +16
-        0,
-        0, // padding up to +16
-        0, // GlyphAssemblyOffset
+        0, 0,     // padding up to +16
+        0,     // GlyphAssemblyOffset
         65000, // VariantCount above the cap
         0, 0, 0, 0, 0, // padding up to +30
         1, // Coverage format 1
@@ -537,22 +516,20 @@ fn bounded_rejects_oversized_assembly() {
     let variants = u16s(&[
         20, // MinConnectorOverlap
         30, // VertGlyphCoverage at +30
-        0, // no horizontal coverage
-        1, // VertGlyphCount
-        0, // HorizGlyphCount
+        0,  // no horizontal coverage
+        1,  // VertGlyphCount
+        0,  // HorizGlyphCount
         16, // construction at +16
-        0,
-        0, // padding up to +16
+        0, 0, // padding up to +16
         8, // GlyphAssembly at +8 from the construction
         0, // VariantCount
-        0,
-        0, // padding up to +24
-        0, // assembly italics correction
-        0, // device offset
+        0, 0,     // padding up to +24
+        0,     // assembly italics correction
+        0,     // device offset
         60000, // PartCount above the cap
-        1, // Coverage format 1
-        1, // one glyph
-        3, // glyph id
+        1,     // Coverage format 1
+        1,     // one glyph
+        3,     // glyph id
     ]);
     let data = math_with_variants(&variants);
     match MathTable::parse(&data) {
@@ -616,10 +593,10 @@ fn bounded_rejects_out_of_range_left_kern_offset() {
 /// appends any kern subtable bytes right after this payload.
 fn glyph_info_with_kern_corner(top_right: u16) -> Vec<u8> {
     u16s(&[
-        0, 0, 0, // no italics, top accent or extended shapes
-        8, // MathKernInfo at +8
-        20, // MathKernCoverage at +20 from MathKernInfo
-        1, // MathKernCount
+        0, 0, 0,         // no italics, top accent or extended shapes
+        8,         // MathKernInfo at +8
+        20,        // MathKernCoverage at +20 from MathKernInfo
+        1,         // MathKernCount
         top_right, // TopRightMathKern
         0,         // TopLeftMathKern
         0,         // BottomRightMathKern
