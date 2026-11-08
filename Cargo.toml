@@ -44,8 +44,8 @@ acorn-wasm = { path = "examples/acorn-wasm" }
 acorn-jvm = { path = "examples/acorn-jvm" }
 acorn-pe = { path = "examples/acorn-pe" }
 
-oak-core = { path = "../oaks/projects/oak-core", default-features = false, features = ["serde"] }
-oak-xml = { path = "../oaks/examples/oak-xml", default-features = false, features = ["serde"] }
+oak-core = { git = "https://github.com/yggdrasil-language/oaks.git", rev = "541b204a3d6fe2806dea1f905736261bf1d0b4ae", default-features = false, features = ["serde"] }
+oak-xml = { git = "https://github.com/yggdrasil-language/oaks.git", rev = "541b204a3d6fe2806dea1f905736261bf1d0b4ae", default-features = false, features = ["serde"] }
 
 [profile.release]
 lto = true
