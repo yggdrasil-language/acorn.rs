@@ -111,6 +111,28 @@ pub enum WasmOpcode {
     I32GeS = 0x4E,
     /// `i32.ge_u`
     I32GeU = 0x4F,
+    /// `i64.eqz`
+    I64Eqz = 0x50,
+    /// `i64.eq`
+    I64Eq = 0x51,
+    /// `i64.ne`
+    I64Ne = 0x52,
+    /// `i64.lt_s`
+    I64LtS = 0x53,
+    /// `i64.lt_u`
+    I64LtU = 0x54,
+    /// `i64.gt_s`
+    I64GtS = 0x55,
+    /// `i64.gt_u`
+    I64GtU = 0x56,
+    /// `i64.le_s`
+    I64LeS = 0x57,
+    /// `i64.le_u`
+    I64LeU = 0x58,
+    /// `i64.ge_s`
+    I64GeS = 0x59,
+    /// `i64.ge_u`
+    I64GeU = 0x5A,
     /// `i32.add`
     I32Add = 0x6A,
     /// `i32.sub`
@@ -137,8 +159,74 @@ pub enum WasmOpcode {
     I32ShrS = 0x75,
     /// `i32.shr_u`
     I32ShrU = 0x76,
+    /// `i64.add`
+    I64Add = 0x7C,
+    /// `i64.sub`
+    I64Sub = 0x7D,
+    /// `i64.mul`
+    I64Mul = 0x7E,
+    /// `i64.div_s`
+    I64DivS = 0x7F,
+    /// `i64.div_u`
+    I64DivU = 0x80,
+    /// `i64.rem_s`
+    I64RemS = 0x81,
+    /// `i64.rem_u`
+    I64RemU = 0x82,
+    /// `i64.and`
+    I64And = 0x83,
+    /// `i64.or`
+    I64Or = 0x84,
+    /// `i64.xor`
+    I64Xor = 0x85,
+    /// `i64.shl`
+    I64Shl = 0x86,
+    /// `i64.shr_s`
+    I64ShrS = 0x87,
     /// `i64.shr_u`
     I64ShrU = 0x88,
+    /// `f32.abs`
+    F32Abs = 0x8B,
+    /// `f32.neg`
+    F32Neg = 0x8C,
+    /// `f32.ceil`
+    F32Ceil = 0x8D,
+    /// `f32.floor`
+    F32Floor = 0x8E,
+    /// `f32.trunc`
+    F32Trunc = 0x8F,
+    /// `f32.nearest`
+    F32Nearest = 0x90,
+    /// `f32.sqrt`
+    F32Sqrt = 0x91,
+    /// `f32.add`
+    F32Add = 0x92,
+    /// `f32.sub`
+    F32Sub = 0x93,
+    /// `f32.mul`
+    F32Mul = 0x94,
+    /// `f32.div`
+    F32Div = 0x95,
+    /// `f32.min`
+    F32Min = 0x96,
+    /// `f32.max`
+    F32Max = 0x97,
+    /// `f32.copysign`
+    F32Copysign = 0x98,
+    /// `f64.abs`
+    F64Abs = 0x99,
+    /// `f64.neg`
+    F64Neg = 0x9A,
+    /// `f64.ceil`
+    F64Ceil = 0x9B,
+    /// `f64.floor`
+    F64Floor = 0x9C,
+    /// `f64.trunc`
+    F64Trunc = 0x9D,
+    /// `f64.nearest`
+    F64Nearest = 0x9E,
+    /// `f64.sqrt`
+    F64Sqrt = 0x9F,
     /// `f64.add`
     F64Add = 0xA0,
     /// `f64.sub`
@@ -149,14 +237,94 @@ pub enum WasmOpcode {
     F64Div = 0xA3,
     /// `f64.min`
     F64Min = 0xA4,
+    /// `f64.max`
+    F64Max = 0xA5,
+    /// `f64.copysign`
+    F64Copysign = 0xA6,
     /// `i32.wrap_i64`
     I32WrapI64 = 0xA7,
-    /// `i64.extend_i32_s`
-    I64ExtendI32S = 0xAC,
+    /// `i32.trunc_f32_s`
+    I32TruncF32S = 0xA8,
+    /// `i32.trunc_f32_u`
+    I32TruncF32U = 0xA9,
     /// `i32.trunc_f64_s`
     I32TruncF64S = 0xAA,
+    /// `i32.trunc_f64_u`
+    I32TruncF64U = 0xAB,
+    /// `i64.extend_i32_s`
+    I64ExtendI32S = 0xAC,
+    /// `i64.extend_i32_u`
+    I64ExtendI32U = 0xAD,
+    /// `i64.trunc_f32_s`
+    I64TruncF32S = 0xAE,
+    /// `i64.trunc_f32_u`
+    I64TruncF32U = 0xAF,
+    /// `i64.trunc_f64_s`
+    I64TruncF64S = 0xB0,
+    /// `i64.trunc_f64_u`
+    I64TruncF64U = 0xB1,
+    /// `f32.convert_i32_s`
+    F32ConvertI32S = 0xB2,
+    /// `f32.convert_i32_u`
+    F32ConvertI32U = 0xB3,
+    /// `f32.convert_i64_s`
+    F32ConvertI64S = 0xB4,
+    /// `f32.convert_i64_u`
+    F32ConvertI64U = 0xB5,
+    /// `f32.demote_f64`
+    F32DemoteF64 = 0xB6,
     /// `f64.convert_i32_s`
     F64ConvertI32S = 0xB7,
+    /// `f64.convert_i32_u`
+    F64ConvertI32U = 0xB8,
+    /// `f64.convert_i64_s`
+    F64ConvertI64S = 0xB9,
+    /// `f64.convert_i64_u`
+    F64ConvertI64U = 0xBA,
+    /// `f64.promote_f32`
+    F64PromoteF32 = 0xBB,
+    /// `i32.reinterpret_f32`
+    I32ReinterpretF32 = 0xBC,
+    /// `i64.reinterpret_f64`
+    I64ReinterpretF64 = 0xBD,
+    /// `f32.reinterpret_i32`
+    F32ReinterpretI32 = 0xBE,
+    /// `f64.reinterpret_i64`
+    F64ReinterpretI64 = 0xBF,
+    /// `i32.extend8_s`
+    I32Extend8S = 0xC0,
+    /// `i32.extend16_s`
+    I32Extend16S = 0xC1,
+    /// `i64.extend8_s`
+    I64Extend8S = 0xC2,
+    /// `i64.extend16_s`
+    I64Extend16S = 0xC3,
+    /// `i64.extend32_s`
+    I64Extend32S = 0xC4,
+    /// `f32.eq`
+    F32Eq = 0x5B,
+    /// `f32.ne`
+    F32Ne = 0x5C,
+    /// `f32.lt`
+    F32Lt = 0x5D,
+    /// `f32.gt`
+    F32Gt = 0x5E,
+    /// `f32.le`
+    F32Le = 0x5F,
+    /// `f32.ge`
+    F32Ge = 0x60,
+    /// `f64.eq`
+    F64Eq = 0x61,
+    /// `f64.ne`
+    F64Ne = 0x62,
+    /// `f64.lt`
+    F64Lt = 0x63,
+    /// `f64.gt`
+    F64Gt = 0x64,
+    /// `f64.le`
+    F64Le = 0x65,
+    /// `f64.ge`
+    F64Ge = 0x66,
     /// `ref.null`
     RefNull = 0xD0,
     /// `ref.is_null`
@@ -242,6 +410,29 @@ impl WasmOpcode {
             0x4D => Self::I32LeU,
             0x4E => Self::I32GeS,
             0x4F => Self::I32GeU,
+            0x50 => Self::I64Eqz,
+            0x51 => Self::I64Eq,
+            0x52 => Self::I64Ne,
+            0x53 => Self::I64LtS,
+            0x54 => Self::I64LtU,
+            0x55 => Self::I64GtS,
+            0x56 => Self::I64GtU,
+            0x57 => Self::I64LeS,
+            0x58 => Self::I64LeU,
+            0x59 => Self::I64GeS,
+            0x5A => Self::I64GeU,
+            0x5B => Self::F32Eq,
+            0x5C => Self::F32Ne,
+            0x5D => Self::F32Lt,
+            0x5E => Self::F32Gt,
+            0x5F => Self::F32Le,
+            0x60 => Self::F32Ge,
+            0x61 => Self::F64Eq,
+            0x62 => Self::F64Ne,
+            0x63 => Self::F64Lt,
+            0x64 => Self::F64Gt,
+            0x65 => Self::F64Le,
+            0x66 => Self::F64Ge,
             0x6A => Self::I32Add,
             0x6B => Self::I32Sub,
             0x6C => Self::I32Mul,
@@ -255,16 +446,77 @@ impl WasmOpcode {
             0x74 => Self::I32Shl,
             0x75 => Self::I32ShrS,
             0x76 => Self::I32ShrU,
+            0x7C => Self::I64Add,
+            0x7D => Self::I64Sub,
+            0x7E => Self::I64Mul,
+            0x7F => Self::I64DivS,
+            0x80 => Self::I64DivU,
+            0x81 => Self::I64RemS,
+            0x82 => Self::I64RemU,
+            0x83 => Self::I64And,
+            0x84 => Self::I64Or,
+            0x85 => Self::I64Xor,
+            0x86 => Self::I64Shl,
+            0x87 => Self::I64ShrS,
             0x88 => Self::I64ShrU,
+            0x8B => Self::F32Abs,
+            0x8C => Self::F32Neg,
+            0x8D => Self::F32Ceil,
+            0x8E => Self::F32Floor,
+            0x8F => Self::F32Trunc,
+            0x90 => Self::F32Nearest,
+            0x91 => Self::F32Sqrt,
+            0x92 => Self::F32Add,
+            0x93 => Self::F32Sub,
+            0x94 => Self::F32Mul,
+            0x95 => Self::F32Div,
+            0x96 => Self::F32Min,
+            0x97 => Self::F32Max,
+            0x98 => Self::F32Copysign,
+            0x99 => Self::F64Abs,
+            0x9A => Self::F64Neg,
+            0x9B => Self::F64Ceil,
+            0x9C => Self::F64Floor,
+            0x9D => Self::F64Trunc,
+            0x9E => Self::F64Nearest,
+            0x9F => Self::F64Sqrt,
             0xA0 => Self::F64Add,
             0xA1 => Self::F64Sub,
             0xA2 => Self::F64Mul,
             0xA3 => Self::F64Div,
             0xA4 => Self::F64Min,
+            0xA5 => Self::F64Max,
+            0xA6 => Self::F64Copysign,
             0xA7 => Self::I32WrapI64,
-            0xAC => Self::I64ExtendI32S,
+            0xA8 => Self::I32TruncF32S,
+            0xA9 => Self::I32TruncF32U,
             0xAA => Self::I32TruncF64S,
+            0xAB => Self::I32TruncF64U,
+            0xAC => Self::I64ExtendI32S,
+            0xAD => Self::I64ExtendI32U,
+            0xAE => Self::I64TruncF32S,
+            0xAF => Self::I64TruncF32U,
+            0xB0 => Self::I64TruncF64S,
+            0xB1 => Self::I64TruncF64U,
+            0xB2 => Self::F32ConvertI32S,
+            0xB3 => Self::F32ConvertI32U,
+            0xB4 => Self::F32ConvertI64S,
+            0xB5 => Self::F32ConvertI64U,
+            0xB6 => Self::F32DemoteF64,
             0xB7 => Self::F64ConvertI32S,
+            0xB8 => Self::F64ConvertI32U,
+            0xB9 => Self::F64ConvertI64S,
+            0xBA => Self::F64ConvertI64U,
+            0xBB => Self::F64PromoteF32,
+            0xBC => Self::I32ReinterpretF32,
+            0xBD => Self::I64ReinterpretF64,
+            0xBE => Self::F32ReinterpretI32,
+            0xBF => Self::F64ReinterpretI64,
+            0xC0 => Self::I32Extend8S,
+            0xC1 => Self::I32Extend16S,
+            0xC2 => Self::I64Extend8S,
+            0xC3 => Self::I64Extend16S,
+            0xC4 => Self::I64Extend32S,
             0xD0 => Self::RefNull,
             0xD1 => Self::RefIsNull,
             0xD2 => Self::RefFunc,
@@ -530,16 +782,100 @@ pub fn opcode_mnemonic(opcode: u8) -> &'static str {
         Some(WasmOpcode::I32Shl) => "i32.shl",
         Some(WasmOpcode::I32ShrS) => "i32.shr_s",
         Some(WasmOpcode::I32ShrU) => "i32.shr_u",
+        Some(WasmOpcode::I64Eqz) => "i64.eqz",
+        Some(WasmOpcode::I64Eq) => "i64.eq",
+        Some(WasmOpcode::I64Ne) => "i64.ne",
+        Some(WasmOpcode::I64LtS) => "i64.lt_s",
+        Some(WasmOpcode::I64LtU) => "i64.lt_u",
+        Some(WasmOpcode::I64GtS) => "i64.gt_s",
+        Some(WasmOpcode::I64GtU) => "i64.gt_u",
+        Some(WasmOpcode::I64LeS) => "i64.le_s",
+        Some(WasmOpcode::I64LeU) => "i64.le_u",
+        Some(WasmOpcode::I64GeS) => "i64.ge_s",
+        Some(WasmOpcode::I64GeU) => "i64.ge_u",
+        Some(WasmOpcode::F32Eq) => "f32.eq",
+        Some(WasmOpcode::F32Ne) => "f32.ne",
+        Some(WasmOpcode::F32Lt) => "f32.lt",
+        Some(WasmOpcode::F32Gt) => "f32.gt",
+        Some(WasmOpcode::F32Le) => "f32.le",
+        Some(WasmOpcode::F32Ge) => "f32.ge",
+        Some(WasmOpcode::F64Eq) => "f64.eq",
+        Some(WasmOpcode::F64Ne) => "f64.ne",
+        Some(WasmOpcode::F64Lt) => "f64.lt",
+        Some(WasmOpcode::F64Gt) => "f64.gt",
+        Some(WasmOpcode::F64Le) => "f64.le",
+        Some(WasmOpcode::F64Ge) => "f64.ge",
+        Some(WasmOpcode::I64Add) => "i64.add",
+        Some(WasmOpcode::I64Sub) => "i64.sub",
+        Some(WasmOpcode::I64Mul) => "i64.mul",
+        Some(WasmOpcode::I64DivS) => "i64.div_s",
+        Some(WasmOpcode::I64DivU) => "i64.div_u",
+        Some(WasmOpcode::I64RemS) => "i64.rem_s",
+        Some(WasmOpcode::I64RemU) => "i64.rem_u",
+        Some(WasmOpcode::I64And) => "i64.and",
+        Some(WasmOpcode::I64Or) => "i64.or",
+        Some(WasmOpcode::I64Xor) => "i64.xor",
+        Some(WasmOpcode::I64Shl) => "i64.shl",
+        Some(WasmOpcode::I64ShrS) => "i64.shr_s",
         Some(WasmOpcode::I64ShrU) => "i64.shr_u",
+        Some(WasmOpcode::F32Abs) => "f32.abs",
+        Some(WasmOpcode::F32Neg) => "f32.neg",
+        Some(WasmOpcode::F32Ceil) => "f32.ceil",
+        Some(WasmOpcode::F32Floor) => "f32.floor",
+        Some(WasmOpcode::F32Trunc) => "f32.trunc",
+        Some(WasmOpcode::F32Nearest) => "f32.nearest",
+        Some(WasmOpcode::F32Sqrt) => "f32.sqrt",
+        Some(WasmOpcode::F32Add) => "f32.add",
+        Some(WasmOpcode::F32Sub) => "f32.sub",
+        Some(WasmOpcode::F32Mul) => "f32.mul",
+        Some(WasmOpcode::F32Div) => "f32.div",
+        Some(WasmOpcode::F32Min) => "f32.min",
+        Some(WasmOpcode::F32Max) => "f32.max",
+        Some(WasmOpcode::F32Copysign) => "f32.copysign",
+        Some(WasmOpcode::F64Abs) => "f64.abs",
+        Some(WasmOpcode::F64Neg) => "f64.neg",
+        Some(WasmOpcode::F64Ceil) => "f64.ceil",
+        Some(WasmOpcode::F64Floor) => "f64.floor",
+        Some(WasmOpcode::F64Trunc) => "f64.trunc",
+        Some(WasmOpcode::F64Nearest) => "f64.nearest",
+        Some(WasmOpcode::F64Sqrt) => "f64.sqrt",
         Some(WasmOpcode::F64Add) => "f64.add",
         Some(WasmOpcode::F64Sub) => "f64.sub",
         Some(WasmOpcode::F64Mul) => "f64.mul",
         Some(WasmOpcode::F64Div) => "f64.div",
         Some(WasmOpcode::F64Min) => "f64.min",
+        Some(WasmOpcode::F64Max) => "f64.max",
+        Some(WasmOpcode::F64Copysign) => "f64.copysign",
         Some(WasmOpcode::I32WrapI64) => "i32.wrap_i64",
-        Some(WasmOpcode::I64ExtendI32S) => "i64.extend_i32_s",
+        Some(WasmOpcode::I32TruncF32S) => "i32.trunc_f32_s",
+        Some(WasmOpcode::I32TruncF32U) => "i32.trunc_f32_u",
         Some(WasmOpcode::I32TruncF64S) => "i32.trunc_f64_s",
+        Some(WasmOpcode::I32TruncF64U) => "i32.trunc_f64_u",
+        Some(WasmOpcode::I64ExtendI32S) => "i64.extend_i32_s",
+        Some(WasmOpcode::I64ExtendI32U) => "i64.extend_i32_u",
+        Some(WasmOpcode::I64TruncF32S) => "i64.trunc_f32_s",
+        Some(WasmOpcode::I64TruncF32U) => "i64.trunc_f32_u",
+        Some(WasmOpcode::I64TruncF64S) => "i64.trunc_f64_s",
+        Some(WasmOpcode::I64TruncF64U) => "i64.trunc_f64_u",
+        Some(WasmOpcode::F32ConvertI32S) => "f32.convert_i32_s",
+        Some(WasmOpcode::F32ConvertI32U) => "f32.convert_i32_u",
+        Some(WasmOpcode::F32ConvertI64S) => "f32.convert_i64_s",
+        Some(WasmOpcode::F32ConvertI64U) => "f32.convert_i64_u",
+        Some(WasmOpcode::F32DemoteF64) => "f32.demote_f64",
         Some(WasmOpcode::F64ConvertI32S) => "f64.convert_i32_s",
+        Some(WasmOpcode::F64ConvertI32U) => "f64.convert_i32_u",
+        Some(WasmOpcode::F64ConvertI64S) => "f64.convert_i64_s",
+        Some(WasmOpcode::F64ConvertI64U) => "f64.convert_i64_u",
+        Some(WasmOpcode::F64PromoteF32) => "f64.promote_f32",
+        Some(WasmOpcode::I32ReinterpretF32) => "i32.reinterpret_f32",
+        Some(WasmOpcode::I64ReinterpretF64) => "i64.reinterpret_f64",
+        Some(WasmOpcode::F32ReinterpretI32) => "f32.reinterpret_i32",
+        Some(WasmOpcode::F64ReinterpretI64) => "f64.reinterpret_i64",
+        Some(WasmOpcode::I32Extend8S) => "i32.extend8_s",
+        Some(WasmOpcode::I32Extend16S) => "i32.extend16_s",
+        Some(WasmOpcode::I64Extend8S) => "i64.extend8_s",
+        Some(WasmOpcode::I64Extend16S) => "i64.extend16_s",
+        Some(WasmOpcode::I64Extend32S) => "i64.extend32_s",
         Some(WasmOpcode::RefNull) => "ref.null",
         Some(WasmOpcode::RefIsNull) => "ref.is_null",
         Some(WasmOpcode::RefFunc) => "ref.func",
