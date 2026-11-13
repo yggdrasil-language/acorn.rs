@@ -47,6 +47,8 @@ pub const OP_END: u8 = WasmOpcode::End as u8;
 pub const VALTYPE_I32: u8 = 0x7F;
 /// `i64` 值类型字节。
 pub const VALTYPE_I64: u8 = 0x7E;
+/// `f32` 值类型字节（独立 4 字节载体，不是 `f64` 的别名）。
+pub const VALTYPE_F32: u8 = 0x7D;
 /// `f64` 值类型字节。
 pub const VALTYPE_F64: u8 = 0x7C;
 /// `funcref` 值类型字节。

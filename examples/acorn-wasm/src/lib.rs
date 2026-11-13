@@ -29,7 +29,7 @@ pub use decode::decode_instruction;
 pub use encode::{
     BLOCKTYPE_EMPTY, FIELD_IMMUTABLE, FIELD_MUTABLE, LIMITS_HAS_MAX, LIMITS_MIN_ONLY, OP_CALL, OP_CALL_INDIRECT, OP_DROP,
     OP_END, OP_I32_CONST, OP_I32_LOAD, OP_LOCAL_SET, TYPE_FORM_ARRAY, TYPE_FORM_FUNC, TYPE_FORM_STRUCT, VALTYPE_ANYREF,
-    VALTYPE_EXTERNREF, VALTYPE_F64, VALTYPE_FUNCREF, VALTYPE_I32, VALTYPE_I64, VALTYPE_REF, VALTYPE_REF_NULL,
+    VALTYPE_EXTERNREF, VALTYPE_F32, VALTYPE_F64, VALTYPE_FUNCREF, VALTYPE_I32, VALTYPE_I64, VALTYPE_REF, VALTYPE_REF_NULL,
     encode_array_copy, encode_array_get, encode_array_len, encode_array_new_default, encode_array_new_fixed, encode_array_set,
     encode_arraytype, encode_arraytype_raw, encode_block_empty, encode_br, encode_br_if, encode_call, encode_call_indirect,
     encode_drop, encode_else, encode_end, encode_external_kind, encode_f32_const, encode_f32_load, encode_f32_store,
