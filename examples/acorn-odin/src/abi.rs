@@ -17,7 +17,10 @@ use sha2::{Digest, Sha256};
 
 use crate::OdinLayout;
 
-/// OVM 库导出 ABI schema 版本（合同命名空间 `/v1`）。
+/// OVM 库导出 ABI schema revision 计数（产物格式修订，不是合同命名空间）。
+///
+/// 对外合同命名空间在 `1.0.0` 之前统一为 `/v0`；本常量只标识 sidecar 结构修订，
+/// 新增/变更字段时递增，旧产物由消费端显式拒绝，不做兼容读取。
 pub const OVM_ABI_SCHEMA_VERSION: u32 = 1;
 
 /// OVM 库导出 ABI 合同。
