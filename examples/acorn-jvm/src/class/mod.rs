@@ -403,6 +403,12 @@ pub enum JvmInstruction {
     Swap,
     /// `iaload` 指令，从 `int` 数组加载元素。
     IALoad,
+    /// `laload` 指令，从 `long` 数组加载元素（压两槽 `long`）。
+    LALoad,
+    /// `faload` 指令，从 `float` 数组加载元素（压 `float`）。
+    FALoad,
+    /// `daload` 指令，从 `double` 数组加载元素（压两槽 `double`）。
+    DALoad,
     /// `baload` 指令，从 `byte`/`boolean` 数组加载元素（压 `int`）。
     BALoad,
     /// `caload` 指令，从 `char` 数组加载元素（压 `int`）。
@@ -411,6 +417,12 @@ pub enum JvmInstruction {
     SALoad,
     /// `iastore` 指令，存入 `int` 数组元素。
     IAStore,
+    /// `lastore` 指令，存入 `long` 数组元素（消耗两槽 `long`）。
+    LAStore,
+    /// `fastore` 指令，存入 `float` 数组元素。
+    FAStore,
+    /// `dastore` 指令，存入 `double` 数组元素（消耗两槽 `double`）。
+    DAStore,
     /// `bastore` 指令，存入 `byte`/`boolean` 数组元素。
     BAStore,
     /// `castore` 指令，存入 `char` 数组元素。
@@ -1355,10 +1367,16 @@ fn instruction_size(instruction: &JvmInstruction) -> usize {
         | JvmInstruction::Swap
         | JvmInstruction::Pop
         | JvmInstruction::IALoad
+        | JvmInstruction::LALoad
+        | JvmInstruction::FALoad
+        | JvmInstruction::DALoad
         | JvmInstruction::BALoad
         | JvmInstruction::CALoad
         | JvmInstruction::SALoad
         | JvmInstruction::IAStore
+        | JvmInstruction::LAStore
+        | JvmInstruction::FAStore
+        | JvmInstruction::DAStore
         | JvmInstruction::BAStore
         | JvmInstruction::CAStore
         | JvmInstruction::SAStore
@@ -1521,10 +1539,16 @@ fn encode_instruction(
         JvmInstruction::Swap => bytes.push(0x5f),
         JvmInstruction::Pop => bytes.push(0x57),
         JvmInstruction::IALoad => bytes.push(0x2E),
+        JvmInstruction::LALoad => bytes.push(0x2F),
+        JvmInstruction::FALoad => bytes.push(0x30),
+        JvmInstruction::DALoad => bytes.push(0x31),
         JvmInstruction::BALoad => bytes.push(0x33),
         JvmInstruction::CALoad => bytes.push(0x34),
         JvmInstruction::SALoad => bytes.push(0x35),
         JvmInstruction::IAStore => bytes.push(0x4F),
+        JvmInstruction::LAStore => bytes.push(0x50),
+        JvmInstruction::FAStore => bytes.push(0x51),
+        JvmInstruction::DAStore => bytes.push(0x52),
         JvmInstruction::BAStore => bytes.push(0x54),
         JvmInstruction::CAStore => bytes.push(0x55),
         JvmInstruction::SAStore => bytes.push(0x56),
