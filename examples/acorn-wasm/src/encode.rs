@@ -101,6 +101,12 @@ pub fn encode_i64_const(value: i64, output: &mut Vec<u8>) {
     Leb128::<i64>::encode(value, output);
 }
 
+/// `f32.const`
+pub fn encode_f32_const(value: f32, output: &mut Vec<u8>) {
+    WasmOpcode::F32Const.encode(output);
+    output.extend_from_slice(&value.to_bits().to_le_bytes());
+}
+
 /// `f64.const`
 pub fn encode_f64_const(value: f64, output: &mut Vec<u8>) {
     WasmOpcode::F64Const.encode(output);
@@ -147,6 +153,11 @@ pub fn encode_i32_store(align: u32, offset: u32, output: &mut Vec<u8>) {
 /// `i64.store`
 pub fn encode_i64_store(align: u32, offset: u32, output: &mut Vec<u8>) {
     encode_memarg(WasmOpcode::I64Store, align, offset, output);
+}
+
+/// `f32.store`
+pub fn encode_f32_store(align: u32, offset: u32, output: &mut Vec<u8>) {
+    encode_memarg(WasmOpcode::F32Store, align, offset, output);
 }
 
 /// `f64.store`
