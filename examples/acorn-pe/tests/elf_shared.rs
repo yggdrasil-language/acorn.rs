@@ -199,11 +199,7 @@ fn linux_dlopen_resolves_a_host_import_through_the_got() {
         let provider = dlopen(provider_name.as_ptr(), 2 | 0x100);
         assert!(!provider.is_null(), "provider dlopen: {}", std::ffi::CStr::from_ptr(dlerror()).to_string_lossy());
         let consumer = dlopen(consumer_name.as_ptr(), 2);
-        assert!(
-            !consumer.is_null(),
-            "consumer dlopen: {}",
-            std::ffi::CStr::from_ptr(dlerror()).to_string_lossy()
-        );
+        assert!(!consumer.is_null(), "consumer dlopen: {}", std::ffi::CStr::from_ptr(dlerror()).to_string_lossy());
         let main = dlsym(consumer, c"main".as_ptr());
         assert!(!main.is_null(), "dlsym main");
         let main: extern "C" fn() -> i32 = std::mem::transmute(main);
@@ -220,7 +216,8 @@ fn linux_dlopen_resolves_a_host_import_through_the_got() {
 ///
 /// `.data` 中的指针由 `R_X86_64_RELATIVE` 在装载时写入（镜像基址 + 加数 = 导出
 /// 函数虚拟地址），`call [rip+disp32]` 经 `shared_elf_data_reference` 指向数据槽。
-fn image_with_pointer_data() -> (SharedElfImage, Vec<SharedObjectExport>, Vec<SharedElfDataRelocation>, Vec<SharedElfDataReference>) {
+fn image_with_pointer_data()
+-> (SharedElfImage, Vec<SharedObjectExport>, Vec<SharedElfDataRelocation>, Vec<SharedElfDataReference>) {
     // 0: `call qword ptr [rip+disp32]`；2: disp32；6: ret。16: `mov eax, 42; ret`。
     let mut text = vec![0xFF, 0x15, 0, 0, 0, 0, 0xC3];
     while text.len() < 16 {
@@ -241,7 +238,8 @@ fn image_with_pointer_data() -> (SharedElfImage, Vec<SharedObjectExport>, Vec<Sh
 #[test]
 fn writes_relative_relocations_for_data() {
     let (image, exports, relocations, references) = image_with_pointer_data();
-    let bytes = SharedElfWriter::write_x86_64_with_imports(&image, &exports, &[], &[], &relocations, &references).expect("write");
+    let bytes =
+        SharedElfWriter::write_x86_64_with_imports(&image, &exports, &[], &[], &relocations, &references).expect("write");
     let header = parse_elf64(&bytes).expect("parse");
     assert_eq!(header.file_type, 3);
     // 没有任何导入时仍必须输出 `DT_RELA`（数据自相对指针）。
@@ -279,7 +277,8 @@ fn linux_dlopen_applies_relative_relocations() {
     }
 
     let (image, exports, relocations, references) = image_with_pointer_data();
-    let bytes = SharedElfWriter::write_x86_64_with_imports(&image, &exports, &[], &[], &relocations, &references).expect("write");
+    let bytes =
+        SharedElfWriter::write_x86_64_with_imports(&image, &exports, &[], &[], &relocations, &references).expect("write");
     let path = std::env::temp_dir().join(format!("libacorn_relative_{}.so", std::process::id()));
     std::fs::write(&path, &bytes).expect("write .so");
     let path_name = CString::new(path.to_string_lossy().as_bytes()).expect("utf8 path");
