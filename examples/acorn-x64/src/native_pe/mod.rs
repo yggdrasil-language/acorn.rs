@@ -101,7 +101,8 @@ impl NativeImageBuilder {
         }
 
         let image =
-            NativePeImage { text: encoded.text, rdata, idata: idata.bytes, imports, exports: Vec::new(), is_dll: false, entry_point };
+            NativePeImage { text: encoded.text, rdata, idata: idata.bytes, imports, exports: Vec::new(), text_rel32_fixups: Vec::new(),
+            is_dll: false, entry_point };
         NativePeWriter::write_executable(&image).map_err(|error| err!("{error}"))
     }
 }
