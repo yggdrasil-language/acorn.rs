@@ -24,6 +24,7 @@ impl std::error::Error for SharedElfWriteError {}
 
 const ET_DYN: u16 = 3;
 const EM_AARCH64: u16 = 183;
+const EM_X86_64: u16 = 62;
 const PT_LOAD: u32 = 1;
 const PT_DYNAMIC: u32 = 2;
 const PF_R: u32 = 4;
@@ -66,8 +67,22 @@ pub struct SharedElfImage {
 pub struct SharedElfWriter;
 
 impl SharedElfWriter {
-    /// 写出最小可加载 `ET_DYN` `.so`（含 `.dynsym` 导出表）。
+    /// 写出最小可加载 AArch64 `ET_DYN` `.so`（含 `.dynsym` 导出表）。
     pub fn write_aarch64(image: &SharedElfImage, exports: &[SharedObjectExport]) -> Result<Vec<u8>, SharedElfWriteError> {
+        Self::write(image, exports, EM_AARCH64)
+    }
+
+    /// 写出最小可加载 x86-64 `ET_DYN` `.so`（含 `.dynsym` 导出表）。
+    ///
+    /// 镜像按位置无关布局生成：`p_vaddr` 与文件偏移恒等、装载基址为 0，导出的
+    /// `st_value` 即 `.text` 内偏移。调用方只提供位置无关机器码（RIP 相对取址与
+    /// 同镜像 `rel32` 调用），不需要动态重定位；宿主 `dlopen` + `dlsym` 直接取址。
+    pub fn write_x86_64(image: &SharedElfImage, exports: &[SharedObjectExport]) -> Result<Vec<u8>, SharedElfWriteError> {
+        Self::write(image, exports, EM_X86_64)
+    }
+
+    /// 按机器类型写出 `ET_DYN`；AArch64 与 x86-64 共享同一动态表布局。
+    fn write(image: &SharedElfImage, exports: &[SharedObjectExport], machine: u16) -> Result<Vec<u8>, SharedElfWriteError> {
         if image.text.is_empty() {
             return Err(SharedElfWriteError::EmptyText);
         }
@@ -103,8 +118,9 @@ impl SharedElfWriter {
         };
 
         let sym_count = exports.len() + 1;
-        let hash_len = (8 + sym_count * 4) as u32;
-        let dynsym_off = hash_off + hash_len;
+        // SysV 哈希表：`nbucket=1`，`nchain=sym_count`，链覆盖全部符号（含 0 号空符号）。
+        let hash_len = (8 + 4 + sym_count * 4) as u32;
+        let dynsym_off = align_up(hash_off + hash_len, 8);
         let dynsym_len = (sym_count * 24) as u32;
 
         let mut dynstr = vec![0u8];
@@ -119,14 +135,14 @@ impl SharedElfWriter {
 
         let dynamic_count = 6;
         let dynamic_len = dynamic_count * 16;
-        let dynamic_off = dynstr_off + dynstr_len;
+        let dynamic_off = align_up(dynstr_off + dynstr_len, 8);
 
         let file_size = dynamic_off + dynamic_len;
         let load_vaddr: u64 = 0;
         let bss_vaddr = align_up(text_len + rodata_len, 16) as u64;
 
         let mut out = Vec::with_capacity(file_size as usize);
-        write_ehdr(&mut out, phnum, file_size, dynamic_off, load_vaddr);
+        write_ehdr(&mut out, phnum, file_size, dynamic_off, load_vaddr, machine);
         write_phdr_load(&mut out, 0, hash_off, load_vaddr, PF_R | PF_X);
         if bss_len > 0 {
             write_phdr_load(&mut out, bss_off, bss_len, bss_vaddr, PF_R | PF_W);
@@ -148,9 +164,10 @@ impl SharedElfWriter {
         }
 
         write_hash(&mut out, sym_count);
+        pad_to(&mut out, dynsym_off as usize);
         write_dynsym(&mut out, exports, &sym_name_offsets, load_vaddr + u64::from(text_off));
         out.extend_from_slice(&dynstr);
-        pad_to(&mut out, (dynstr_off + dynstr_len) as usize);
+        pad_to(&mut out, dynamic_off as usize);
 
         write_dynamic(
             &mut out,
@@ -165,10 +182,10 @@ impl SharedElfWriter {
     }
 }
 
-fn write_ehdr(out: &mut Vec<u8>, phnum: u16, _file_size: u32, dynamic_off: u32, _load_vaddr: u64) {
+fn write_ehdr(out: &mut Vec<u8>, phnum: u16, _file_size: u32, dynamic_off: u32, _load_vaddr: u64, machine: u16) {
     out.extend_from_slice(&[0x7F, b'E', b'L', b'F', 2, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
     out.extend_from_slice(&ET_DYN.to_le_bytes());
-    out.extend_from_slice(&EM_AARCH64.to_le_bytes());
+    out.extend_from_slice(&machine.to_le_bytes());
     out.extend_from_slice(&1u32.to_le_bytes());
     out.extend_from_slice(&0u64.to_le_bytes());
     out.extend_from_slice(&(ELF_EHDR_SIZE as u64).to_le_bytes());
@@ -205,12 +222,20 @@ fn write_phdr_dynamic(out: &mut Vec<u8>, offset: u32, filesz: u32, vaddr: u64) {
     out.extend_from_slice(&0x8u64.to_le_bytes());
 }
 
+/// SysV 哈希表：单桶线性链覆盖全部导出符号。
+///
+/// `nchain` 与 `.dynsym` 项数相同；`chain[0]` 是空符号、永不被遍历，`chain[i]`
+/// 指向下一个同桶符号（最后一个为 0）。只写单桶是对的：本写入器不生成哈希值，
+/// 所有名字都落在 0 号桶，宿主查找退化为符号表线性扫描。
 fn write_hash(out: &mut Vec<u8>, sym_count: usize) {
-    out.extend_from_slice(&1u32.to_le_bytes());
-    out.extend_from_slice(&(sym_count as u32).to_le_bytes());
-    out.extend_from_slice(&1u32.to_le_bytes());
-    for _ in 1..sym_count {
-        out.extend_from_slice(&0u32.to_le_bytes());
+    let count = sym_count as u32;
+    out.extend_from_slice(&1u32.to_le_bytes()); // nbucket
+    out.extend_from_slice(&count.to_le_bytes()); // nchain
+    // 0 号桶指向第一个导出符号；只有空符号时为空。
+    out.extend_from_slice(&u32::from(count > 1).to_le_bytes());
+    for index in 0..count {
+        let next = if index > 0 && index + 1 < count { index + 1 } else { 0 };
+        out.extend_from_slice(&next.to_le_bytes());
     }
 }
 
