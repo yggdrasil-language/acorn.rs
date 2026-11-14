@@ -9,6 +9,13 @@ pub enum SharedElfWriteError {
     EmptyText,
     /// 共享库至少需要一个导出符号。
     MissingExports,
+    /// 宿主导入的 `rel32` 字段落在 `.text` 之外。
+    ImportFixupOutOfRange {
+        /// 声明的字段偏移。
+        field: u32,
+        /// `.text` 实际长度。
+        text_len: u32,
+    },
 }
 
 impl fmt::Display for SharedElfWriteError {
@@ -16,6 +23,9 @@ impl fmt::Display for SharedElfWriteError {
         match self {
             Self::EmptyText => write!(f, "`.text` 节不能为空"),
             Self::MissingExports => write!(f, "共享库至少需要一个导出符号"),
+            Self::ImportFixupOutOfRange { field, text_len } => {
+                write!(f, "宿主导入的 `rel32` 字段 {field} 超出 `.text` 长度 {text_len}")
+            }
         }
     }
 }
@@ -36,13 +46,21 @@ const DT_NULL: u64 = 0;
 const DT_HASH: u64 = 4;
 const DT_STRTAB: u64 = 5;
 const DT_SYMTAB: u64 = 6;
+const DT_RELA: u64 = 7;
+const DT_RELASZ: u64 = 8;
+const DT_RELAENT: u64 = 9;
 const DT_STRSZ: u64 = 10;
 const DT_SYMENT: u64 = 11;
+
+/// `R_X86_64_GLOB_DAT`：把解析后的地址写入 GOT 槽（非惰性绑定）。
+const R_X86_64_GLOB_DAT: u32 = 6;
 
 const STT_FUNC: u8 = 2;
 const STB_GLOBAL: u8 = 1;
 const STV_DEFAULT: u8 = 0;
 const SHN_UNDEF: u16 = 0;
+/// 定义符号所在的唯一节（本写入器不输出节头，宿主按动态表访问）。
+const SHN_TEXT: u16 = 1;
 
 /// 动态导出符号（`.text` 内偏移 + 名称）。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -53,7 +71,20 @@ pub struct SharedObjectExport {
     pub text_offset: u32,
 }
 
-/// AArch64 ET_DYN 共享库镜像。
+/// 宿主导入符号（未定义符号 + 对应 GOT 间接调用的 `rel32` 字段）。
+///
+/// 宿主装载时按**全局符号作用域**解析（例如 Node 进程导出的 `napi_*`、libc
+/// 的 `write`），解析地址由 `R_X86_64_GLOB_DAT` 写入独立的可写 GOT 段；因此
+/// 调用点只需 `call [rip+disp32]`，不需要 PLT 或惰性绑定。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SharedElfImport {
+    /// 未定义符号名。
+    pub symbol: String,
+    /// `call [rip+disp32]` 的 `disp32` 字段在 `.text` 内的偏移。
+    pub rel32_field: u32,
+}
+
+/// `ET_DYN` 共享库镜像。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SharedElfImage {
     /// `.text` 节。
@@ -64,13 +95,13 @@ pub struct SharedElfImage {
     pub bss: Vec<u8>,
 }
 
-/// AArch64 ET_DYN 共享库写入器。
+/// `ET_DYN` 共享库写入器。
 pub struct SharedElfWriter;
 
 impl SharedElfWriter {
     /// 写出最小可加载 AArch64 `ET_DYN` `.so`（含 `.dynsym` 导出表）。
     pub fn write_aarch64(image: &SharedElfImage, exports: &[SharedObjectExport]) -> Result<Vec<u8>, SharedElfWriteError> {
-        Self::write(image, exports, EM_AARCH64)
+        Self::write(image, exports, &[], EM_AARCH64)
     }
 
     /// 写出最小可加载 x86-64 `ET_DYN` `.so`（含 `.dynsym` 导出表）。
@@ -79,11 +110,29 @@ impl SharedElfWriter {
     /// `st_value` 即 `.text` 内偏移。调用方只提供位置无关机器码（RIP 相对取址与
     /// 同镜像 `rel32` 调用），不需要动态重定位；宿主 `dlopen` + `dlsym` 直接取址。
     pub fn write_x86_64(image: &SharedElfImage, exports: &[SharedObjectExport]) -> Result<Vec<u8>, SharedElfWriteError> {
-        Self::write(image, exports, EM_X86_64)
+        Self::write(image, exports, &[], EM_X86_64)
+    }
+
+    /// 写出带宿主导入的 x86-64 `ET_DYN` `.so`。
+    ///
+    /// 每个导入生成一个未定义动态符号、一个可写 GOT 槽和一个 `R_X86_64_GLOB_DAT`
+    /// 重定位；`imports[*].rel32_field` 处的 `call [rip+disp32]` 在布局确定后回填到
+    /// 对应 GOT 槽。
+    pub fn write_x86_64_with_imports(
+        image: &SharedElfImage,
+        exports: &[SharedObjectExport],
+        imports: &[SharedElfImport],
+    ) -> Result<Vec<u8>, SharedElfWriteError> {
+        Self::write(image, exports, imports, EM_X86_64)
     }
 
     /// 按机器类型写出 `ET_DYN`；AArch64 与 x86-64 共享同一动态表布局。
-    fn write(image: &SharedElfImage, exports: &[SharedObjectExport], machine: u16) -> Result<Vec<u8>, SharedElfWriteError> {
+    fn write(
+        image: &SharedElfImage,
+        exports: &[SharedObjectExport],
+        imports: &[SharedElfImport],
+        machine: u16,
+    ) -> Result<Vec<u8>, SharedElfWriteError> {
         if image.text.is_empty() {
             return Err(SharedElfWriteError::EmptyText);
         }
@@ -94,9 +143,10 @@ impl SharedElfWriter {
         let text_len = align_up(image.text.len() as u32, 16);
         let rodata_len = align_up(image.rodata.len() as u32, 16);
         let bss_len = align_up(image.bss.len() as u32, 16);
+        let import_count = imports.len() as u32;
 
-        // 程序头：PT_LOAD +（可选 PT_LOAD bss）+ PT_DYNAMIC + PT_GNU_STACK。
-        let phnum: u16 = if bss_len > 0 { 4 } else { 3 };
+        // 程序头：PT_LOAD +（可选 bss PT_LOAD）+（可选 GOT PT_LOAD）+ PT_DYNAMIC + PT_GNU_STACK。
+        let phnum: u16 = 3 + u16::from(bss_len > 0) + u16::from(import_count > 0);
         let headers = ELF_EHDR_SIZE + ELF_PHDR_SIZE * u32::from(phnum);
         let text_off = align_up(headers, 16);
         let rodata_off = if rodata_len == 0 { 0 } else { text_off + text_len };
@@ -119,37 +169,52 @@ impl SharedElfWriter {
             rodata_off + rodata_len
         };
 
-        let sym_count = exports.len() + 1;
+        let sym_count = exports.len() + imports.len() + 1;
         // SysV 哈希表：`nbucket=1`，`nchain=sym_count`，链覆盖全部符号（含 0 号空符号）。
         let hash_len = (8 + 4 + sym_count * 4) as u32;
         let dynsym_off = align_up(hash_off + hash_len, 8);
         let dynsym_len = (sym_count * 24) as u32;
 
         let mut dynstr = vec![0u8];
-        let mut sym_name_offsets = Vec::with_capacity(exports.len());
+        let mut export_name_offsets = Vec::with_capacity(exports.len());
         for export in exports {
-            sym_name_offsets.push(dynstr.len() as u32);
+            export_name_offsets.push(dynstr.len() as u32);
             dynstr.extend_from_slice(export.name.as_bytes());
+            dynstr.push(0);
+        }
+        let mut import_name_offsets = Vec::with_capacity(imports.len());
+        for import in imports {
+            import_name_offsets.push(dynstr.len() as u32);
+            dynstr.extend_from_slice(import.symbol.as_bytes());
             dynstr.push(0);
         }
         let dynstr_len = align_up(dynstr.len() as u32, 1);
         let dynstr_off = dynsym_off + dynsym_len;
 
-        let dynamic_count = 6;
+        let rela_len = import_count * 24;
+        let rela_off = if import_count == 0 { 0 } else { align_up(dynstr_off + dynstr_len, 8) };
+        let dynamic_count = if import_count == 0 { 6 } else { 9 };
         let dynamic_len = dynamic_count * 16;
-        let dynamic_off = align_up(dynstr_off + dynstr_len, 8);
+        let dynamic_off = align_up(if rela_off > 0 { rela_off + rela_len } else { dynstr_off + dynstr_len }, 8);
+        // GOT 必须是可写页，且与可执行段分页隔离。
+        let got_off = if import_count == 0 { 0 } else { align_up(dynamic_off + dynamic_len, 0x1000) };
+        let got_len = import_count * 8;
+        let load_filesz = dynamic_off + dynamic_len;
+        let file_size = if got_off > 0 { got_off + got_len } else { load_filesz };
 
-        let file_size = dynamic_off + dynamic_len;
         let load_vaddr: u64 = 0;
         let bss_vaddr = align_up(text_len + rodata_len, 16) as u64;
 
         let mut out = Vec::with_capacity(file_size as usize);
-        write_ehdr(&mut out, phnum, file_size, dynamic_off, load_vaddr, machine);
-        // 首个 `PT_LOAD` 必须覆盖整个文件：`.hash`/`.dynsym`/`.dynstr`/`.dynamic`
-        // 都靠 `PT_DYNAMIC` 的虚地址访问，落在段外会让宿主装载时读取未映射页。
-        write_phdr_load(&mut out, 0, u64::from(file_size), load_vaddr, PF_R | PF_X);
+        write_ehdr(&mut out, phnum, machine);
+        // 首个 `PT_LOAD` 覆盖头部、`.text` 与全部动态表：`.hash`/`.dynsym`/`.dynstr`/
+        // `.rela.dyn`/`.dynamic` 都靠虚地址访问，落在段外会让宿主读到未映射页。
+        write_phdr_load(&mut out, 0, u64::from(load_filesz), load_vaddr, PF_R | PF_X);
         if bss_len > 0 {
             write_phdr_load(&mut out, u64::from(bss_off), u64::from(bss_len), bss_vaddr, PF_R | PF_W);
+        }
+        if got_off > 0 {
+            write_phdr_load(&mut out, u64::from(got_off), u64::from(got_len), u64::from(got_off), PF_R | PF_W);
         }
         write_phdr_dynamic(&mut out, u64::from(dynamic_off), u64::from(dynamic_len), load_vaddr + u64::from(dynamic_off));
         // 显式声明**不可执行栈**：缺 PT_GNU_STACK 时 glibc 认为对象要求可执行栈，
@@ -157,8 +222,21 @@ impl SharedElfWriter {
         // 导致 `dlopen` 报 "cannot enable executable stack"。
         write_phdr_gnu_stack(&mut out);
 
+        // `.text`：把每个导入的 `call [rip+disp32]` 回填到对应 GOT 槽。
+        let mut text = image.text.clone();
+        for (index, import) in imports.iter().enumerate() {
+            let field = import.rel32_field as usize;
+            if field + 4 > text.len() {
+                return Err(SharedElfWriteError::ImportFixupOutOfRange { field: import.rel32_field, text_len: text.len() as u32 });
+            }
+            let slot_vaddr = i64::from(got_off) + 8 * index as i64;
+            let field_vaddr = i64::from(text_off) + field as i64 + 4;
+            let displacement = i32::try_from(slot_vaddr - field_vaddr)
+                .map_err(|_| SharedElfWriteError::ImportFixupOutOfRange { field: import.rel32_field, text_len: text.len() as u32 })?;
+            text[field..field + 4].copy_from_slice(&displacement.to_le_bytes());
+        }
         pad_to(&mut out, text_off as usize);
-        out.extend_from_slice(&image.text);
+        out.extend_from_slice(&text);
         pad_to(&mut out, (text_off + text_len) as usize);
 
         if rodata_len > 0 {
@@ -173,24 +251,45 @@ impl SharedElfWriter {
 
         write_hash(&mut out, sym_count);
         pad_to(&mut out, dynsym_off as usize);
-        write_dynsym(&mut out, exports, &sym_name_offsets, load_vaddr + u64::from(text_off));
+        write_dynsym(
+            &mut out,
+            exports,
+            &export_name_offsets,
+            imports,
+            &import_name_offsets,
+            load_vaddr + u64::from(text_off),
+        );
         out.extend_from_slice(&dynstr);
-        pad_to(&mut out, dynamic_off as usize);
 
+        if rela_off > 0 {
+            pad_to(&mut out, rela_off as usize);
+            for (index, _) in imports.iter().enumerate() {
+                let symbol = (exports.len() + index + 1) as u64;
+                write_rela(&mut out, u64::from(got_off) + 8 * index as u64, (symbol << 32) | u64::from(R_X86_64_GLOB_DAT));
+            }
+        }
+
+        pad_to(&mut out, dynamic_off as usize);
         write_dynamic(
             &mut out,
             load_vaddr + u64::from(hash_off),
             load_vaddr + u64::from(dynsym_off),
             load_vaddr + u64::from(dynstr_off),
             dynstr.len() as u64,
+            if rela_off > 0 { Some((load_vaddr + u64::from(rela_off), u64::from(rela_len))) } else { None },
         );
+
+        if got_off > 0 {
+            pad_to(&mut out, got_off as usize);
+            out.resize(got_off as usize + got_len as usize, 0);
+        }
 
         debug_assert_eq!(out.len(), file_size as usize);
         Ok(out)
     }
 }
 
-fn write_ehdr(out: &mut Vec<u8>, phnum: u16, _file_size: u32, dynamic_off: u32, _load_vaddr: u64, machine: u16) {
+fn write_ehdr(out: &mut Vec<u8>, phnum: u16, machine: u16) {
     out.extend_from_slice(&[0x7F, b'E', b'L', b'F', 2, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
     out.extend_from_slice(&ET_DYN.to_le_bytes());
     out.extend_from_slice(&machine.to_le_bytes());
@@ -205,7 +304,6 @@ fn write_ehdr(out: &mut Vec<u8>, phnum: u16, _file_size: u32, dynamic_off: u32, 
     out.extend_from_slice(&0u16.to_le_bytes());
     out.extend_from_slice(&0u16.to_le_bytes());
     out.extend_from_slice(&0u16.to_le_bytes());
-    let _ = dynamic_off;
 }
 
 /// `Elf64_Phdr` 的 `p_offset`/`p_vaddr`/`p_paddr`/`p_filesz`/`p_memsz` 都是 8 字节；
@@ -244,7 +342,7 @@ fn write_phdr_dynamic(out: &mut Vec<u8>, offset: u64, filesz: u64, vaddr: u64) {
     out.extend_from_slice(&0x8u64.to_le_bytes());
 }
 
-/// SysV 哈希表：单桶线性链覆盖全部导出符号。
+/// SysV 哈希表：单桶线性链覆盖全部符号。
 ///
 /// `nchain` 与 `.dynsym` 项数相同；`chain[0]` 是空符号、永不被遍历，`chain[i]`
 /// 指向下一个同桶符号（最后一个为 0）。只写单桶是对的：本写入器不生成哈希值，
@@ -261,12 +359,21 @@ fn write_hash(out: &mut Vec<u8>, sym_count: usize) {
     }
 }
 
-fn write_dynsym(out: &mut Vec<u8>, exports: &[SharedObjectExport], name_offsets: &[u32], text_vaddr: u64) {
-    write_sym(out, 0, 0, 0, 0, 0);
-    for (export, name_off) in exports.iter().zip(name_offsets) {
+fn write_dynsym(
+    out: &mut Vec<u8>,
+    exports: &[SharedObjectExport],
+    export_name_offsets: &[u32],
+    imports: &[SharedElfImport],
+    import_name_offsets: &[u32],
+    text_vaddr: u64,
+) {
+    write_sym(out, 0, 0, 0, SHN_UNDEF, 0);
+    for (export, name_off) in exports.iter().zip(export_name_offsets) {
         let value = text_vaddr + u64::from(export.text_offset);
-        let info = (STB_GLOBAL << 4) | STT_FUNC;
-        write_sym(out, *name_off, info, STV_DEFAULT, 1, value);
+        write_sym(out, *name_off, (STB_GLOBAL << 4) | STT_FUNC, STV_DEFAULT, SHN_TEXT, value);
+    }
+    for name_off in import_name_offsets.iter().take(imports.len()) {
+        write_sym(out, *name_off, (STB_GLOBAL << 4) | STT_FUNC, STV_DEFAULT, SHN_UNDEF, 0);
     }
 }
 
@@ -279,12 +386,31 @@ fn write_sym(out: &mut Vec<u8>, name: u32, info: u8, other: u8, shndx: u16, valu
     out.extend_from_slice(&0u64.to_le_bytes());
 }
 
-fn write_dynamic(out: &mut Vec<u8>, hash_vaddr: u64, symtab_vaddr: u64, strtab_vaddr: u64, strsz: u64) {
+/// `Elf64_Rela`：`r_offset`、`r_info = (sym << 32) | type`、`r_addend`。
+fn write_rela(out: &mut Vec<u8>, offset: u64, info: u64) {
+    out.extend_from_slice(&offset.to_le_bytes());
+    out.extend_from_slice(&info.to_le_bytes());
+    out.extend_from_slice(&0i64.to_le_bytes());
+}
+
+fn write_dynamic(
+    out: &mut Vec<u8>,
+    hash_vaddr: u64,
+    symtab_vaddr: u64,
+    strtab_vaddr: u64,
+    strsz: u64,
+    rela: Option<(u64, u64)>,
+) {
     write_dyn(out, DT_HASH, hash_vaddr);
     write_dyn(out, DT_SYMTAB, symtab_vaddr);
     write_dyn(out, DT_STRTAB, strtab_vaddr);
     write_dyn(out, DT_STRSZ, strsz);
     write_dyn(out, DT_SYMENT, 24);
+    if let Some((rela_vaddr, rela_size)) = rela {
+        write_dyn(out, DT_RELA, rela_vaddr);
+        write_dyn(out, DT_RELASZ, rela_size);
+        write_dyn(out, DT_RELAENT, 24);
+    }
     write_dyn(out, DT_NULL, 0);
 }
 
