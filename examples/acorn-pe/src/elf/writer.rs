@@ -9,6 +9,13 @@ pub enum ElfWriteError {
     EmptyText,
     /// 节过大。
     SizeOverflow(&'static str),
+    /// 入口点落在 `.text` 之外。
+    EntryOutOfRange {
+        /// 声明的入口偏移。
+        entry_point: u32,
+        /// `.text` 实际长度。
+        text_len: u32,
+    },
 }
 
 impl fmt::Display for ElfWriteError {
@@ -16,6 +23,9 @@ impl fmt::Display for ElfWriteError {
         match self {
             Self::EmptyText => write!(f, "`.text` 节不能为空"),
             Self::SizeOverflow(what) => write!(f, "{what} 过大"),
+            Self::EntryOutOfRange { entry_point, text_len } => {
+                write!(f, "入口偏移 {entry_point} 超出 `.text` 长度 {text_len}")
+            }
         }
     }
 }
@@ -44,6 +54,9 @@ impl NativeElfWriter {
         }
 
         let text_len = u32::try_from(image.text.len()).map_err(|_| ElfWriteError::SizeOverflow("`.text`"))?;
+        if u64::from(image.entry_point) >= u64::from(text_len) {
+            return Err(ElfWriteError::EntryOutOfRange { entry_point: image.entry_point, text_len });
+        }
         let rodata_len = u32::try_from(image.rodata.len()).map_err(|_| ElfWriteError::SizeOverflow("`.rodata`"))?;
         let layout = ElfSectionLayout::compute(text_len, rodata_len);
         let entry = u64::from(layout.text_vaddr + image.entry_point);
