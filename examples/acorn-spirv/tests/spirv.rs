@@ -1,8 +1,11 @@
 //! Structural tests for the SPIR-V module layout adapter.
 
 use acorn_core::{Budget, BudgetError, BudgetTracker, ByteRange};
-use acorn_source::{ByteSource, MemorySource, ReadOutcome, ReadResult, SourceCapabilities, SourceIdentity};
-use acorn_spirv::{SPIRV_ID_BOUND_CEILING, SPIRV_MAGIC, SpirvBoundSuspicion, SpirvLayoutError, SpirvModule, validate_spirv};
+use acorn_source::{ByteSource, MemorySource, ReadError, ReadOutcome, ReadResult, SourceCapabilities, SourceIdentity};
+use acorn_spirv::{
+    SPIRV_ID_BOUND_CEILING, SPIRV_MAGIC, SpirvBoundSuspicion, SpirvByteError, SpirvLayoutError, SpirvModule, validate_spirv,
+    validate_spirv_bytes,
+};
 
 const OP_CAPABILITY: u16 = 17;
 const OP_MEMORY_MODEL: u16 = 14;
@@ -357,4 +360,71 @@ fn short_header_read_keeps_the_requested_range() {
         }
         other => panic!("unexpected error: {other:?}"),
     }
+}
+
+#[test]
+fn byte_slice_entry_validates_minimal_module() {
+    let summary = validate_spirv_bytes(&minimal_module()).expect("minimal module is structurally valid");
+    assert_eq!(summary.header.magic, SPIRV_MAGIC);
+    assert_eq!(summary.header.version, VERSION_1_0);
+    assert_eq!(summary.header.bound, 16);
+    assert_eq!(summary.instruction_count, 3);
+    assert_eq!(summary.instruction_words, 10);
+    assert_eq!(summary.total_words, 15);
+    assert_eq!(summary.bound_suspicion, None);
+}
+
+#[test]
+fn byte_slice_entry_rejects_bad_magic() {
+    let mut bytes = Vec::new();
+    push_header(&mut bytes, 0xDEAD_BEEF, 16, 0);
+    push_minimal_body(&mut bytes);
+
+    let error = validate_spirv_bytes(&bytes).expect_err("bad magic must fail");
+    match error {
+        SpirvByteError::Layout(SpirvLayoutError::BadMagic { magic, evidence }) => {
+            assert_eq!(magic, 0xDEAD_BEEF);
+            assert_eq!(evidence.word_offset, 0);
+            assert_eq!(evidence.byte_range, ByteRange { start: 0, len: 4 });
+        }
+        other => panic!("unexpected error: {other:?}"),
+    }
+}
+
+#[test]
+fn byte_slice_entry_rejects_truncated_header() {
+    let mut bytes = Vec::new();
+    push_word(&mut bytes, SPIRV_MAGIC);
+    push_word(&mut bytes, VERSION_1_0);
+    push_word(&mut bytes, GENERATOR);
+
+    let error = validate_spirv_bytes(&bytes).expect_err("a truncated header must fail");
+    match error {
+        SpirvByteError::Layout(SpirvLayoutError::TruncatedHeader { available_bytes, evidence }) => {
+            assert_eq!(available_bytes, 12);
+            assert_eq!(evidence.byte_range, ByteRange { start: 0, len: 12 });
+        }
+        other => panic!("unexpected error: {other:?}"),
+    }
+}
+
+#[test]
+fn byte_slice_error_keeps_the_original_error() {
+    let mut bytes = Vec::new();
+    push_header(&mut bytes, 0xDEAD_BEEF, 16, 0);
+
+    let error = validate_spirv_bytes(&bytes).expect_err("bad magic must fail");
+    assert!(error.to_string().contains("magic"), "{error}");
+    assert!(std::error::Error::source(&error).is_some(), "the typed cause must be preserved");
+}
+
+#[test]
+fn byte_error_maps_layout_budget_and_source_failures() {
+    assert_eq!(SpirvByteError::from(SpirvLayoutError::UnknownLength), SpirvByteError::Layout(SpirvLayoutError::UnknownLength));
+    assert_eq!(
+        SpirvByteError::from(SpirvLayoutError::Budget(BudgetError::ReadBytes)),
+        SpirvByteError::Budget(BudgetError::ReadBytes)
+    );
+    assert_eq!(SpirvByteError::from(BudgetError::ScanBytes), SpirvByteError::Budget(BudgetError::ScanBytes));
+    assert_eq!(SpirvByteError::from(ReadError::Eof), SpirvByteError::Source(ReadError::Eof));
 }
