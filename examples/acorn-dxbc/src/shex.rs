@@ -7,15 +7,21 @@ use crate::{
     chunk::DxbcChunk,
     container::read_exact,
     error::{DxbcEvidence, DxbcLayoutError},
-    header::{DXBC_WORD_BYTES, SHEX_HEADER_BYTES},
+    header::{
+        DXBC_OPCODE_TOKEN_LENGTH_MASK, DXBC_OPCODE_TOKEN_LENGTH_SHIFT, DXBC_OPCODE_TOKEN_OPCODE_MASK, DXBC_WORD_BYTES,
+        SHEX_HEADER_BYTES,
+    },
 };
 
 /// One instruction in the stream, described only by its layout.
+///
+/// An SM5 opcode token keeps its length in bits[30:24] and its opcode in
+/// bits[10:0], so the token of a one-word instruction only carries flags.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DxbcInstruction {
-    /// Raw opcode from the low 16 bits of the leading word.
+    /// Raw opcode from bits[10:0] of the leading word.
     pub opcode: u16,
-    /// Declared length in words, including the leading word.
+    /// Declared length in words from bits[30:24], including the leading word.
     pub word_count: u32,
     /// Index of the leading word inside the instruction stream.
     pub word_offset: u64,
@@ -163,8 +169,8 @@ impl<S: ByteSource + ?Sized> Iterator for ShexInstructions<'_, '_, S> {
             }
         };
         let word = u32::from_le_bytes(bytes.try_into().expect("one word was read"));
-        let word_count = word >> 16;
-        let opcode = (word & 0xFFFF) as u16;
+        let word_count = (word >> DXBC_OPCODE_TOKEN_LENGTH_SHIFT) & DXBC_OPCODE_TOKEN_LENGTH_MASK;
+        let opcode = (word & DXBC_OPCODE_TOKEN_OPCODE_MASK) as u16;
 
         if word_count == 0 {
             self.done = true;
