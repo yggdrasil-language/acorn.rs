@@ -15,8 +15,8 @@ pub use clr::{
     },
 };
 pub use native::{
-    IMAGE_BASE_X64, NativeDllImport, NativeExport, NativeImportTable, NativePeImage, NativePeWriter, NativeSectionLayout,
-    build_native_import_table,
+    IMAGE_BASE_X64, NativeDataRelocation, NativeDataSection, NativeDataTarget, NativeDllImport, NativeExport,
+    NativeImportTable, NativePeImage, NativePeWriter, NativeSectionLayout, build_native_import_table,
 };
 pub use read::{
     CliHeader, CoffHeader as PeCoffHeader, DataDirectory, DosHeader, MetadataRoot, OptionalHeader, Pe64Header, Pe64ParseError,
