@@ -1,0 +1,16 @@
+[package]
+name = "acorn-asn1"
+version.workspace = true
+authors.workspace = true
+description = "ASN.1 DER codec for Acorn: strict TLV reading and writing, object identifiers and X.509 time."
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository = "https://github.com/yggdrasil-language/acorn.rs/tree/dev/projects/acorn-asn1"
+categories = ["encoding", "parsing"]
+keywords = ["asn1", "der", "binary", "x509"]
+
+[dependencies]
+
+[package.metadata.docs.rs]
+all-features = true
