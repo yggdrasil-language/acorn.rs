@@ -100,9 +100,12 @@ fn unknown_intrinsic_operand_is_rejected() {
 
 #[test]
 fn unsigned_comparison_opcodes_round_trip() {
-    for (byte, code) in
-        [(0x43u8, OdinHeadCode::I32LtU), (0x45u8, OdinHeadCode::I32LeU), (0x47u8, OdinHeadCode::I32GtU), (0x49u8, OdinHeadCode::I32GeU)]
-    {
+    for (byte, code) in [
+        (0x43u8, OdinHeadCode::I32LtU),
+        (0x45u8, OdinHeadCode::I32LeU),
+        (0x47u8, OdinHeadCode::I32GtU),
+        (0x49u8, OdinHeadCode::I32GeU),
+    ] {
         assert_eq!(OdinHeadCode::from_u8(byte), Some(code), "槽位 0x{byte:02X} 必须解析为 {code:?}");
         assert_eq!(code as u8, byte);
         assert_eq!(code.form(), OdinInstructionForm::Plain);
@@ -113,7 +116,9 @@ fn unsigned_comparison_opcodes_round_trip() {
     for code in [OdinHeadCode::I32LtU, OdinHeadCode::I32LeU, OdinHeadCode::I32GtU, OdinHeadCode::I32GeU] {
         emit_plain(&mut stream, code);
     }
-    for (index, code) in [OdinHeadCode::I32LtU, OdinHeadCode::I32LeU, OdinHeadCode::I32GtU, OdinHeadCode::I32GeU].iter().enumerate() {
+    for (index, code) in
+        [OdinHeadCode::I32LtU, OdinHeadCode::I32LeU, OdinHeadCode::I32GtU, OdinHeadCode::I32GeU].iter().enumerate()
+    {
         let decoded = decode_at(&stream, index);
         assert_eq!(decoded.code, *code);
         assert!(decoded.is_valid(), "{code:?} 必须是可解码的 Plain 指令");
@@ -137,15 +142,26 @@ fn bitwise_opcodes_round_trip() {
     }
 
     let mut stream = Vec::new();
-    for code in
-        [OdinHeadCode::I32And, OdinHeadCode::I32Or, OdinHeadCode::I32Xor, OdinHeadCode::I32Shl, OdinHeadCode::I32ShrS, OdinHeadCode::I32ShrU]
-    {
+    for code in [
+        OdinHeadCode::I32And,
+        OdinHeadCode::I32Or,
+        OdinHeadCode::I32Xor,
+        OdinHeadCode::I32Shl,
+        OdinHeadCode::I32ShrS,
+        OdinHeadCode::I32ShrU,
+    ] {
         emit_plain(&mut stream, code);
     }
-    for (index, code) in
-        [OdinHeadCode::I32And, OdinHeadCode::I32Or, OdinHeadCode::I32Xor, OdinHeadCode::I32Shl, OdinHeadCode::I32ShrS, OdinHeadCode::I32ShrU]
-            .iter()
-            .enumerate()
+    for (index, code) in [
+        OdinHeadCode::I32And,
+        OdinHeadCode::I32Or,
+        OdinHeadCode::I32Xor,
+        OdinHeadCode::I32Shl,
+        OdinHeadCode::I32ShrS,
+        OdinHeadCode::I32ShrU,
+    ]
+    .iter()
+    .enumerate()
     {
         let decoded = decode_at(&stream, index);
         assert_eq!(decoded.code, *code);

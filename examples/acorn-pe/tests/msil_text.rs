@@ -85,7 +85,11 @@ fn module_file_name_is_written_before_types() {
 fn operands_are_rendered_from_their_variant() {
     let mut method = add_method();
     method.instructions = vec![
-        MsilInstruction { label: Some("L0".to_string()), opcode: MsilOpcode::LdcI4S, operand: Some(MsilInstructionOperand::Integer(7)) },
+        MsilInstruction {
+            label: Some("L0".to_string()),
+            opcode: MsilOpcode::LdcI4S,
+            operand: Some(MsilInstructionOperand::Integer(7)),
+        },
         MsilInstruction {
             label: None,
             opcode: MsilOpcode::Ldstr,

@@ -3,8 +3,8 @@
 use crate::{
     errors::OdinDecodeError,
     model::{
-        OdinConstant, OdinExport, OdinExportKind, OdinFunction, OdinGlobal, OdinImport, OdinImportKind, OdinLayout, OdinModuleData,
-        OdinWitnessDispatchEntry,
+        OdinConstant, OdinExport, OdinExportKind, OdinFunction, OdinGlobal, OdinImport, OdinImportKind, OdinLayout,
+        OdinModuleData, OdinWitnessDispatchEntry,
     },
     opcode::{HEADER_SIZE, NYAR_ASSEMBLY_MAGIC, ODIN_MAGIC, SECTION_HEADER_SIZE},
 };
@@ -251,7 +251,11 @@ fn decode_exports(slice: &[u8], out: &mut Vec<OdinExport>) -> Result<(), OdinDec
         if offset + 4 > slice.len() {
             return Err(OdinDecodeError::TooShort);
         }
-        out.push(OdinExport { kind, symbol_name, function_index: i32::from_le_bytes(slice[offset..offset + 4].try_into().expect("idx")) });
+        out.push(OdinExport {
+            kind,
+            symbol_name,
+            function_index: i32::from_le_bytes(slice[offset..offset + 4].try_into().expect("idx")),
+        });
         offset += 4;
     }
     Ok(())

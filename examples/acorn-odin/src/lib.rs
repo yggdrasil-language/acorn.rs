@@ -25,21 +25,19 @@ mod opcode;
 
 pub use crate::{
     abi::{
-        OVM_ABI_SCHEMA_VERSION, OVM_ABI_SIDECAR_SUFFIX, OvmAbiContract, OvmAbiExport, OvmAbiField, OvmAbiParam, OvmAbiSidecar, OvmAbiType,
-        OvmAbiVariant, OvmOptionBoxing, OvmTextRepresentation, artifact_sha256, ovm_abi_sidecar_file,
+        OVM_ABI_SCHEMA_VERSION, OVM_ABI_SIDECAR_SUFFIX, OvmAbiContract, OvmAbiExport, OvmAbiField, OvmAbiParam, OvmAbiSidecar,
+        OvmAbiType, OvmAbiVariant, OvmOptionBoxing, OvmTextRepresentation, artifact_sha256, ovm_abi_sidecar_file,
     },
     decode::decode_module,
     encode::encode_module,
     errors::OdinDecodeError,
     model::{
-        OdinConstant, OdinConstantKind, OdinExport, OdinExportKind, OdinFunction, OdinGlobal, OdinImport, OdinImportKind, OdinLayout,
-        OdinModuleData, OdinSectionKind, OdinWitnessDispatchEntry,
+        OdinConstant, OdinConstantKind, OdinExport, OdinExportKind, OdinFunction, OdinGlobal, OdinImport, OdinImportKind,
+        OdinLayout, OdinModuleData, OdinSectionKind, OdinWitnessDispatchEntry,
     },
     opcode::{
-        BYTECODE_FORMAT_VERSION, HEADER_SIZE, IntrinsicOpcode, NYAR_ASSEMBLY_MAGIC, OBSOLETE_CALL_NATIVE, ODIN_MAGIC, OdinHeadCode, OdinInstruction,
-        OdinInstructionForm, Odin_VERSION, SECTION_HEADER_SIZE, decode_at, emit_imm1, emit_imm2, emit_plain,
-
-
-
+        BYTECODE_FORMAT_VERSION, HEADER_SIZE, IntrinsicOpcode, NYAR_ASSEMBLY_MAGIC, OBSOLETE_CALL_NATIVE, ODIN_MAGIC,
+        Odin_VERSION, OdinHeadCode, OdinInstruction, OdinInstructionForm, SECTION_HEADER_SIZE, decode_at, emit_imm1, emit_imm2,
+        emit_plain,
     },
 };
