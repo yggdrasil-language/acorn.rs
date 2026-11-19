@@ -3,7 +3,7 @@
 # This patch keeps sibling `projects/*` crates on disk during local development.
 
 [patch."https://github.com/oovm/rust-boost"]
-boost-diagnostic = { path = "<your-path>/rust-boost/projects/boost-diagnostic" }
+boost-harness = { path = "<your-path>/rust-boost/projects/boost/boost.harness" }
 
 [patch."https://github.com/yggdrasil-language/oaks.git"]
 oak-core = { path = "<your-path>/oaks/projects/oak-core" }
